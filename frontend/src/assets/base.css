@@ -1,0 +1,41 @@
+:root {
+  --bg: #f5f0e8;
+  --surface: #fdfbf7;
+  --ink: #1c1c1c;
+  --muted: #5c5c5c;
+  --accent: #ff7b4a;
+  --accent-strong: #f26430;
+  --accent-cool: #1a9aa6;
+  --border: rgba(28, 28, 28, 0.12);
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+  --font-display: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --font-body: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
