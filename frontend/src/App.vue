@@ -305,6 +305,14 @@ const adapted = reactive({});
 const materials = ref(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
 const history = ref(JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]"));
 const coverPlaceholder = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=900&q=80";
+const IMAGE_MAX_COUNT = 9;
+const VIDEO_MAX_COUNT = 3;
+const COVER_MAX_COUNT = 1;
+const IMAGE_MAX_SIZE = 10 * 1024 * 1024;
+const VIDEO_MAX_SIZE = 500 * 1024 * 1024;
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+const VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-msvideo", "video/x-matroska"];
+const VIDEO_EXTS = [".mp4", ".mov", ".avi", ".mkv"];
 
 const aiSettings = reactive({
   provider: "openai",
@@ -724,31 +732,45 @@ function hiddenInputs() {
 }
 
 function mediaUploadGrid() {
+  const imageHints = ["格式：JPG / PNG / WEBP", "大小：单张不超过 10MB，最多 9 张", "推荐：公众号 900x500，知乎 1200x675，小红书 1080x1440"];
+  const videoHints = ["格式：MP4 / MOV / AVI / MKV", "大小：单个不超过 500MB，最多 3 个", "推荐：B站 1920x1080，小红书 1080x1920"];
+  const coverHints = ["格式：JPG / PNG / WEBP", "大小：1 张，不超过 10MB", "推荐：B站 1920x1080，公众号 900x383，小红书 1080x1440"];
   return h("div", { class: "media-grid" }, [
-    uploadCard("图片", `${form.images.length}/9`, "支持 jpg/png/webp，单张不超过 10MB，最多 9 张。推荐：公众号 900x500，知乎 1200x675，小红书 1080x1440。", form.images, "images", () => imageInput.value?.click()),
-    uploadCard("视频", `${form.videos.length}/3`, "支持 mp4/mov/avi/mkv，单个不超过 500MB，最多 3 个。推荐：B站 1920x1080，小红书 1080x1920。", form.videos, "videos", () => videoInput.value?.click()),
+    uploadCard("图片", `${form.images.length}/${IMAGE_MAX_COUNT}`, imageHints, form.images, "images", () => imageInput.value?.click()),
+    uploadCard("视频", `${form.videos.length}/${VIDEO_MAX_COUNT}`, videoHints, form.videos, "videos", () => videoInput.value?.click()),
     h("div", { class: "media-card cover-card" }, [
-      h("strong", "封面图"),
-      h("p", { class: "media-hint" }, "支持 jpg/png/webp，不超过 10MB。推荐：B站 1920x1080，公众号 900x383，小红书 1080x1440。"),
-      h("div", { class: "cover-preview" }, h("img", { src: form.cover?.url || coverPlaceholder, alt: "封面图" })),
-      h("button", { class: "ghost-btn small", onClick: () => coverInput.value?.click() }, "更换封面")
+      h("strong", ["封面图", h("span", ` (${form.cover ? COVER_MAX_COUNT : 0}/${COVER_MAX_COUNT})`)]),
+      h("ul", { class: "media-hint-list" }, coverHints.map((hint) => h("li", hint))),
+      h("div", { class: "cover-preview-wrap" }, [
+        h("div", { class: "cover-preview" }, h("img", { src: form.cover?.url || coverPlaceholder, alt: "封面图" })),
+        form.cover ? h("div", { class: "media-meta" }, [
+          h("strong", form.cover.name || "封面图"),
+          h("span", formatSize(form.cover.size))
+        ]) : h("p", { class: "media-empty" }, "尚未上传封面")
+      ]),
+      h("div", { class: "cover-actions" }, [
+        h("button", { class: "ghost-btn small", onClick: () => coverInput.value?.click() }, form.cover ? "更换封面" : "上传封面"),
+        form.cover ? h("button", { class: "danger-btn small", onClick: removeCover }, "删除") : null
+      ])
     ])
   ]);
 }
 
 function uploadCard(title, count, hint, list, type, onAdd) {
+  const maxCount = type === "videos" ? VIDEO_MAX_COUNT : IMAGE_MAX_COUNT;
   return h("div", { class: "media-card" }, [
     h("strong", [title, h("span", ` (${count})`)]),
-    h("p", { class: "media-hint" }, hint),
+    h("ul", { class: "media-hint-list" }, hint.map((item) => h("li", item))),
     h("div", { class: "media-list" }, [
       ...list.map((item, index) =>
         h("div", { class: ["thumb", type === "videos" ? "video-thumb" : "image-thumb"] }, [
           type === "videos" ? h("span", "▷") : h("img", { src: item.url, alt: item.name }),
           h("small", item.name),
-          h("button", { class: "delete-media", onClick: () => removeMedia(type, index) }, "×")
+          h("em", formatSize(item.size)),
+          h("button", { class: "delete-media", title: "删除素材", onClick: () => removeMedia(type, index) }, "×")
         ])
       ),
-      list.length < (type === "videos" ? 3 : 9) ? h("button", { class: "add-thumb", onClick: onAdd }, "+") : null
+      list.length < maxCount ? h("button", { class: "add-thumb", onClick: onAdd }, "+") : null
     ])
   ]);
 }
@@ -1058,6 +1080,32 @@ function formatSize(size = 0) {
   return `${size || 0}B`;
 }
 
+function fileExt(file) {
+  const name = file?.name || "";
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index).toLowerCase() : "";
+}
+
+function isAllowedVideo(file) {
+  return VIDEO_TYPES.includes(file.type) || VIDEO_EXTS.includes(fileExt(file));
+}
+
+function validateUploadFile(file, type) {
+  if (type === "image") {
+    if (!IMAGE_TYPES.includes(file.type)) return "只能上传 JPG / PNG / WEBP 图片。";
+    if (file.size > IMAGE_MAX_SIZE) return "单张图片不能超过 10MB。";
+  }
+  if (type === "video") {
+    if (!isAllowedVideo(file)) return "只能上传 MP4 / MOV / AVI / MKV 视频。";
+    if (file.size > VIDEO_MAX_SIZE) return "单个视频不能超过 500MB。";
+  }
+  if (type === "cover") {
+    if (!IMAGE_TYPES.includes(file.type)) return "封面必须是 JPG / PNG / WEBP 图片。";
+    if (file.size > IMAGE_MAX_SIZE) return "封面不能超过 10MB。";
+  }
+  return "";
+}
+
 async function uploadFile(file, type) {
   const body = new FormData();
   body.append("file", file);
@@ -1102,16 +1150,13 @@ function upsertMaterial(item) {
 async function handleImageUpload(event) {
   const files = Array.from(event.target.files || []);
   for (const file of files) {
-    if (form.images.length >= 9) {
-      notice.value = "最多只能上传 9 张图片。";
+    if (form.images.length >= IMAGE_MAX_COUNT) {
+      notice.value = "图片最多只能上传 9 张。";
       break;
     }
-    if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type)) {
-      notice.value = "只能上传 jpg/png/jpeg/webp 图片。";
-      continue;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      notice.value = "单张图片不能超过 10MB。";
+    const error = validateUploadFile(file, "image");
+    if (error) {
+      notice.value = error;
       continue;
     }
     form.images.push(await addLocalFile(file, "image"));
@@ -1122,16 +1167,13 @@ async function handleImageUpload(event) {
 async function handleVideoUpload(event) {
   const files = Array.from(event.target.files || []);
   for (const file of files) {
-    if (form.videos.length >= 3) {
-      notice.value = "最多只能上传 3 个视频。";
+    if (form.videos.length >= VIDEO_MAX_COUNT) {
+      notice.value = "视频最多只能上传 3 个。";
       break;
     }
-    if (!file.type.startsWith("video/")) {
-      notice.value = "只能上传视频文件。";
-      continue;
-    }
-    if (file.size > 500 * 1024 * 1024) {
-      notice.value = "单个视频不能超过 500MB。";
+    const error = validateUploadFile(file, "video");
+    if (error) {
+      notice.value = error;
       continue;
     }
     form.videos.push(await addLocalFile(file, "video"));
@@ -1142,12 +1184,10 @@ async function handleVideoUpload(event) {
 async function handleCoverUpload(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type)) {
-    notice.value = "封面必须是 jpg/png/jpeg/webp 图片。";
-    return;
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    notice.value = "封面不能超过 10MB。";
+  const error = validateUploadFile(file, "cover");
+  if (error) {
+    notice.value = error;
+    event.target.value = "";
     return;
   }
   form.cover = await addLocalFile(file, "cover");
@@ -1160,6 +1200,11 @@ function removeMedia(type, index) {
   form[type].splice(index, 1);
 }
 
+function removeCover() {
+  if (form.cover?.url?.startsWith("blob:")) URL.revokeObjectURL(form.cover.url);
+  form.cover = null;
+}
+
 function removeMaterial(item) {
   materials.value = materials.value.filter((material) => material.id !== item.id && material.url !== item.url);
   localStorage.setItem(`materials:${username.value || "guest"}`, JSON.stringify(materials.value));
@@ -1170,6 +1215,14 @@ function addMaterialToCurrentTask(item) {
   if (item.type === "cover") {
     form.cover = item;
   } else if (target && !target.some((existing) => existing.url === item.url)) {
+    if (item.type === "image" && target.length >= IMAGE_MAX_COUNT) {
+      notice.value = "图片最多只能添加 9 张。";
+      return;
+    }
+    if (item.type === "video" && target.length >= VIDEO_MAX_COUNT) {
+      notice.value = "视频最多只能添加 3 个。";
+      return;
+    }
     target.push(item);
   }
   item.usage_count = (item.usage_count || 0) + 1;
@@ -1623,24 +1676,29 @@ a { color: inherit; text-decoration: none; }
 .tag-editor button { border: 0; background: transparent; color: #98a1b3; }
 .tag-editor input { flex: 1; min-width: 120px; border: 0; outline: 0; }
 
-.media-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.media-card { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.media-card { min-width: 0; max-width: 100%; padding: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .media-card strong { display: block; margin-bottom: 8px; font-size: 14px; }
 .media-card strong span, .media-hint { color: #7b8498; }
-.media-hint { min-height: 54px; margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
-.media-list { display: flex; gap: 10px; max-width: 100%; overflow-x: auto; padding: 2px 2px 8px; }
+.media-hint-list { min-height: 72px; margin: 0 0 10px; padding: 10px 12px 10px 26px; border: 1px solid #edf1f7; border-radius: 8px; background: #fbfcff; color: #69738a; font-size: 12px; line-height: 1.55; }
+.media-list { display: flex; gap: 10px; width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 2px 2px 8px; overscroll-behavior-inline: contain; }
 .thumb, .add-thumb, .cover-preview { border-radius: 8px; border: 1px solid var(--line); background: #f8fafc; overflow: hidden; }
 .thumb, .add-thumb { position: relative; width: 88px; height: 88px; flex: 0 0 88px; }
 .thumb img, .cover-preview img { width: 100%; height: 100%; object-fit: cover; }
-.image-thumb small { position: absolute; left: 4px; right: 4px; bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 10px; text-shadow: 0 1px 4px #111; }
+.image-thumb small { position: absolute; left: 4px; right: 4px; bottom: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 10px; text-shadow: 0 1px 4px #111; }
+.thumb em { position: absolute; left: 4px; right: 4px; bottom: 4px; overflow: hidden; color: rgba(255, 255, 255, 0.9); font-size: 10px; font-style: normal; text-align: center; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 4px #111; }
 .video-thumb { display: grid; place-items: center; padding: 8px; color: #fff; background: linear-gradient(135deg, #17203a, #31517a); }
 .video-thumb span { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid rgba(255, 255, 255, 0.75); border-radius: 50%; }
 .video-thumb small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 11px; }
 .delete-media { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(24, 33, 58, 0.75); color: #fff; font-weight: 900; }
 .add-thumb { border-style: dashed; color: #48536d; font-size: 28px; }
-.cover-card { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; }
-.cover-card strong, .cover-card .media-hint { grid-column: 1 / -1; }
+.cover-card { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 10px; }
+.cover-preview-wrap { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
 .cover-preview { width: 150px; height: 88px; }
+.media-meta { min-width: 0; }
+.media-meta strong { overflow: hidden; margin: 0 0 6px; text-overflow: ellipsis; white-space: nowrap; }
+.media-meta span, .media-empty { margin: 0; color: #7b8498; font-size: 12px; font-weight: 700; }
+.cover-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .ai-panel { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) minmax(140px, 0.7fr) auto minmax(190px, 0.9fr); align-items: end; gap: 18px; }
 .ai-panel label, .setting-field { display: grid; gap: 8px; }
@@ -1816,6 +1874,8 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
   .top-actions { display: none; }
   .workspace { padding: 14px; }
   .media-grid, .side-column, .preview-grid, .platform-grid, .metric-grid, .material-stats, .account-grid, .settings-grid, .ai-provider-grid, .ai-config-form, .detail-platforms, .detail-meta { grid-template-columns: 1fr; }
+  .cover-preview-wrap { grid-template-columns: 1fr; }
+  .cover-preview { width: 100%; max-width: 260px; }
   .ai-default-card { align-items: stretch; flex-direction: column; }
   .ai-panel { grid-template-columns: 1fr; }
   .record-row, .record-row.table, .record-head { grid-template-columns: 1fr; }
