@@ -104,12 +104,32 @@
       </div>
       <div class="top-actions">
         <button class="icon-btn" type="button" title="主题">☼</button>
-        <button class="icon-btn bell" type="button" title="通知" aria-label="通知">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-          </svg>
-        </button>
+        <div class="notification-wrap">
+          <button class="icon-btn bell" type="button" title="通知" aria-label="通知" @click="notificationPanelOpen = !notificationPanelOpen">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+              <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+            </svg>
+            <b v-if="unreadNotifications.length">{{ unreadNotifications.length > 9 ? "9+" : unreadNotifications.length }}</b>
+          </button>
+          <section v-if="notificationPanelOpen" class="notification-panel">
+            <div class="notification-head">
+              <strong>通知中心</strong>
+              <button v-if="unreadNotifications.length" type="button" @click="markAllNotificationsRead">全部已读</button>
+            </div>
+            <div v-if="notifications.length" class="notification-list">
+              <article v-for="item in notifications" :key="item.id" class="notification-item" :class="{ unread: !item.read, [item.type]: true }">
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <p>{{ item.message }}</p>
+                  <small>{{ item.time }}</small>
+                </div>
+                <button v-if="!item.read" type="button" @click="markNotificationRead(item.id)">已读</button>
+              </article>
+            </div>
+            <div v-else class="notification-empty">暂无新通知</div>
+          </section>
+        </div>
         <div class="profile">
           <div class="avatar">{{ username.slice(0, 1) || "明" }}</div>
           <div>
@@ -304,6 +324,8 @@ const publishResults = ref([]);
 const adapted = reactive({});
 const materials = ref(sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]")));
 const history = ref(JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]"));
+const notifications = ref(JSON.parse(localStorage.getItem(`notifications:${username.value || "guest"}`) || "[]"));
+const notificationPanelOpen = ref(false);
 const IMAGE_MAX_COUNT = 9;
 const VIDEO_MAX_COUNT = 3;
 const COVER_MAX_COUNT = 1;
@@ -454,6 +476,7 @@ const parsedTags = computed(() =>
 );
 const selectedPlatforms = computed(() => platforms.filter((platform) => form.platforms.includes(platform.id)));
 const previewList = computed(() => selectedPlatforms.value.map((platform) => ({ ...platform, content: adapted[platform.id] })).filter((item) => item.content));
+const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read));
 const filteredMaterials = computed(() => (materialFilter.value === "all" ? materials.value : materials.value.filter((item) => item.type === materialFilter.value)));
 const materialStats = computed(() => {
   const totalSize = materials.value.reduce((sum, item) => sum + (item.size || 0), 0);
@@ -932,6 +955,7 @@ function applyLogin(data) {
 async function afterAuth() {
   history.value = JSON.parse(localStorage.getItem(`records:${username.value}`) || "[]");
   materials.value = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value}`) || "[]"));
+  notifications.value = JSON.parse(localStorage.getItem(notificationStorageKey()) || "[]");
   await Promise.all([loadRecords(), loadMaterials(), loadAiSettings(), loadAccounts()]);
   router.push("/dashboard");
 }
@@ -1116,6 +1140,43 @@ function formatMaterialTime(value) {
   if (Number.isNaN(date.getTime())) return value;
   const pad = (number) => String(number).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function notificationStorageKey() {
+  return `notifications:${username.value || "guest"}`;
+}
+
+function persistNotifications() {
+  localStorage.setItem(notificationStorageKey(), JSON.stringify(notifications.value));
+}
+
+function addNotification(type, title, message) {
+  notifications.value = [
+    {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      type,
+      title,
+      message,
+      time: new Date().toLocaleString(),
+      read: false
+    },
+    ...notifications.value
+  ].slice(0, 50);
+  persistNotifications();
+}
+
+function markNotificationRead(id) {
+  const item = notifications.value.find((notification) => notification.id === id);
+  if (!item) return;
+  item.read = true;
+  persistNotifications();
+}
+
+function markAllNotificationsRead() {
+  notifications.value.forEach((notification) => {
+    notification.read = true;
+  });
+  persistNotifications();
 }
 
 function fileExt(file) {
@@ -1356,7 +1417,11 @@ async function generateContent() {
     });
     taskId.value = response?.task_id || Date.now();
     Object.assign(adapted, response?.code === 200 && response.data ? response.data : buildLocalPreview());
-    if (response?.code !== 200) notice.value = "后端未返回有效结果，已使用本地规则生成预览。";
+    if (response?.code === 200) {
+      addNotification("success", "AI生成成功", `已生成 ${Object.keys(adapted).length} 个平台内容。`);
+    } else {
+      notice.value = "后端未返回有效结果，已使用本地规则生成预览。";
+    }
   } catch (error) {
     taskId.value = Date.now();
     Object.assign(adapted, buildLocalPreview());
@@ -1429,6 +1494,10 @@ async function publishAll() {
     }
     history.value = [...publishResults.value, ...history.value].slice(0, 30);
     localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
+    const failedCount = publishResults.value.filter((item) => item.status === "failed").length;
+    const successCount = publishResults.value.length - failedCount;
+    if (successCount > 0) addNotification("success", "模拟发布成功", `${successCount} 个平台已完成模拟发布。`);
+    if (failedCount > 0) addNotification("danger", "发布失败", `${failedCount} 个平台发布失败，请查看发布记录。`);
     loading.publish = false;
     router.push("/records");
   }
@@ -1595,8 +1664,12 @@ async function testProvider(provider = aiSettings.provider) {
       body: JSON.stringify({ provider, settings: aiSettings })
     });
     notice.value = response?.message || `${providerLabel(provider)} 连接测试已完成。`;
+    if (response?.code !== 200) {
+      addNotification("danger", "模型连接失败", `${providerLabel(provider)} 连接测试失败，请检查 API Key、Base URL 和模型名。`);
+    }
   } catch (error) {
     notice.value = `${providerLabel(provider)} 连接测试失败，请检查配置。`;
+    addNotification("danger", "模型连接失败", `${providerLabel(provider)} 连接测试失败，请检查 API Key、Base URL 和模型名。`);
   } finally {
     testingProvider.value = "";
   }
@@ -1685,6 +1758,22 @@ a { color: inherit; text-decoration: none; }
 .top-actions, .profile { display: flex; align-items: center; gap: 14px; }
 .icon-btn { width: 38px; height: 38px; border: 0; border-radius: 50%; background: transparent; color: #4f5972; font-size: 22px; }
 .bell svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.notification-wrap { position: relative; }
+.bell { position: relative; display: grid; place-items: center; }
+.bell b { position: absolute; top: -4px; right: -3px; min-width: 18px; height: 18px; display: grid; place-items: center; padding: 0 5px; border: 2px solid #fff; border-radius: 99px; background: #ff4f6d; color: #fff; font-size: 10px; line-height: 1; }
+.notification-panel { position: absolute; top: 50px; right: 0; z-index: 40; width: min(380px, calc(100vw - 32px)); display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 20px 60px rgba(18, 27, 47, 0.16); }
+.notification-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.notification-head strong { font-size: 15px; }
+.notification-head button, .notification-item button { border: 0; background: transparent; color: var(--blue); font-size: 12px; font-weight: 900; }
+.notification-list { display: grid; gap: 8px; max-height: 360px; overflow: auto; }
+.notification-item { display: flex; justify-content: space-between; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.notification-item.unread { border-color: #b9cdfa; background: #f5f8ff; }
+.notification-item.success { border-left: 4px solid var(--green); }
+.notification-item.danger { border-left: 4px solid #e5485d; }
+.notification-item strong, .notification-item p, .notification-item small { display: block; margin: 0; }
+.notification-item p { margin-top: 5px; color: #596276; font-size: 13px; line-height: 1.5; }
+.notification-item small { margin-top: 6px; color: #8a94a8; font-size: 12px; }
+.notification-empty { padding: 22px; border: 1px dashed #d8deea; border-radius: 8px; background: #fbfcff; color: #7b8498; text-align: center; font-weight: 800; }
 .profile { padding-left: 18px; border-left: 1px solid var(--line); }
 .avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(135deg, #f8b28d, #5a87c8); color: #fff; font-weight: 900; }
 .profile strong, .profile span { display: block; }
