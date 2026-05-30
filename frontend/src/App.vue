@@ -162,21 +162,56 @@
         <button class="dialog-close" type="button" @click="recordDetailVisible = false">×</button>
         <h2>{{ selectedRecord?.task_title || "发布详情" }}</h2>
         <div class="detail-meta">
-          <span>发布时间：{{ selectedRecord?.publish_time || "-" }}</span>
-          <span>发布模式：{{ selectedRecord?.publish_mode || "mock" }}</span>
-          <span>状态：{{ selectedRecord?.status || "success" }}</span>
-          <span>平台数：{{ selectedRecord?.platform_contents?.length || 0 }}</span>
+          <span>发布时间：{{ formatPublishTime(selectedRecord?.publish_time) }}</span>
+          <span>发布平台：{{ selectedRecord?.platform_contents?.map((item) => platformName(item.platform)).join(" / ") || "-" }}</span>
+          <span>状态：{{ selectedRecord?.status === "failed" ? "失败" : "成功" }}</span>
+          <span>模拟发布ID：{{ selectedRecord?.publish_id || "-" }}</span>
         </div>
-        <p class="source-text">{{ selectedRecord?.source_content || form.content }}</p>
+        <section class="detail-source">
+          <h3>原始正文</h3>
+          <p class="source-text">{{ selectedRecord?.source_content || form.content }}</p>
+        </section>
         <div class="detail-platforms">
           <article v-for="item in selectedRecord?.platform_contents || []" :key="item.platform" class="detail-card">
-            <h3>{{ platformName(item.platform) }}</h3>
-            <strong>{{ item.title }}</strong>
-            <p>{{ item.content || item.description }}</p>
+            <div class="detail-card-head">
+              <h3>{{ platformName(item.platform) }}</h3>
+              <span :class="['status-tag', item.status === 'failed' ? 'failed' : 'success']">
+                {{ item.status === "failed" ? "失败" : "成功" }}
+              </span>
+            </div>
+            <dl class="detail-fields">
+              <dt>模拟发布ID</dt>
+              <dd>{{ item.publish_id || selectedRecord?.publish_id || "-" }}</dd>
+              <dt>发布时间</dt>
+              <dd>{{ formatPublishTime(selectedRecord?.publish_time) }}</dd>
+              <dt>发布平台</dt>
+              <dd>{{ platformName(item.platform) }}</dd>
+              <dt>标题</dt>
+              <dd>{{ item.title || selectedRecord?.task_title || "-" }}</dd>
+            </dl>
+            <div class="detail-body">
+              <h4>正文</h4>
+              <p>{{ item.content || item.description || "-" }}</p>
+            </div>
             <div class="preview-tags">
               <span v-for="tag in normalizeTags(item.tags)" :key="tag">#{{ tag }}</span>
             </div>
-            <small>状态：{{ item.status || selectedRecord?.status || "success" }}</small>
+            <div v-if="item.cover" class="detail-media-section">
+              <h4>封面</h4>
+              <img class="detail-cover" :src="item.cover" alt="封面" />
+            </div>
+            <div v-if="item.images?.length" class="detail-media-section">
+              <h4>图片</h4>
+              <div class="detail-media-grid">
+                <img v-for="image in item.images" :key="image" :src="image" alt="发布图片" />
+              </div>
+            </div>
+            <div v-if="item.videos?.length || item.video" class="detail-media-section">
+              <h4>视频</h4>
+              <div class="detail-video-list">
+                <span v-for="video in normalizeVideos(item)" :key="video">{{ video }}</span>
+              </div>
+            </div>
           </article>
         </div>
       </section>
@@ -829,6 +864,12 @@ function normalizeTags(tags) {
   return parsedTags.value;
 }
 
+function normalizeVideos(item) {
+  const videos = Array.isArray(item?.videos) ? item.videos : [];
+  if (item?.video && !videos.includes(item.video)) return [item.video, ...videos];
+  return videos;
+}
+
 function platformName(id) {
   return platforms.find((platform) => platform.id === id)?.name || id;
 }
@@ -1100,6 +1141,7 @@ async function publishAll() {
       title: form.title,
       platform: platform.id,
       status: "success",
+      publish_id: `mock_${platform.id}_${Date.now()}`,
       publish_time: new Date().toLocaleString(),
       detail: buildLocalRecordDetail()
     }));
@@ -1110,6 +1152,7 @@ async function publishAll() {
         title: adapted[platform.id]?.title || form.title,
         platform: platform.id,
         status: "success",
+        publish_id: `mock_${platform.id}_${Date.now()}`,
         publish_time: new Date().toLocaleString(),
         detail: buildLocalRecordDetail()
       }));
@@ -1129,10 +1172,12 @@ function buildLocalRecordDetail(record) {
     publish_time: record?.publish_time || new Date().toLocaleString(),
     publish_mode: "mock",
     status: record?.status || "success",
+    publish_id: record?.publish_id || `mock_local_${Date.now()}`,
     platform_contents: selectedPlatforms.value.map((platform) => ({
       platform: platform.id,
       ...(adapted[platform.id] || {}),
-      status: "success"
+      status: "success",
+      publish_id: record?.publish_id || `mock_${platform.id}_${Date.now()}`
     }))
   };
 }
@@ -1455,14 +1500,29 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .pay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pay-grid div { display: grid; place-items: center; gap: 8px; min-height: 130px; border: 1px dashed #cfd6e4; border-radius: 8px; background: #fbfcff; color: #53607a; font-weight: 800; }
 .pay-grid b { width: 74px; height: 74px; display: grid; place-items: center; background: repeating-linear-gradient(45deg, #111 0 6px, #fff 6px 12px); color: var(--accent); border: 8px solid #fff; box-shadow: 0 0 0 1px #dfe5ef; }
-.record-drawer { position: relative; width: min(980px, 100%); max-height: 88vh; overflow: auto; display: grid; gap: 16px; padding: 28px; border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
+.record-drawer { position: relative; width: min(1080px, 100%); max-height: 88vh; overflow: auto; display: grid; gap: 16px; padding: 28px; border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
 .record-drawer h2 { margin: 0; }
 .detail-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; color: #65708a; font-weight: 800; font-size: 13px; }
+.detail-meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-source { display: grid; gap: 10px; }
+.detail-source h3 { margin: 0; font-size: 15px; }
 .source-text { margin: 0; padding: 14px; border-radius: 8px; background: #f7f9fc; color: #4e5a74; line-height: 1.7; white-space: pre-wrap; }
 .detail-platforms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .detail-card { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
-.detail-card h3, .detail-card p { margin: 0; }
+.detail-card h3, .detail-card h4, .detail-card p { margin: 0; }
+.detail-card h4 { color: #5d6680; font-size: 13px; }
+.detail-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.detail-fields { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px 12px; margin: 0; padding: 12px; border-radius: 8px; background: #fff; font-size: 13px; }
+.detail-fields dt { color: #7b8498; font-weight: 800; }
+.detail-fields dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 800; }
+.detail-body { display: grid; gap: 8px; }
 .detail-card p { color: #4e5a74; line-height: 1.7; white-space: pre-wrap; }
+.detail-media-section { display: grid; gap: 8px; }
+.detail-cover { width: 160px; height: 90px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.detail-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.detail-media-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.detail-video-list { display: grid; gap: 6px; }
+.detail-video-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 10px; border-radius: 8px; background: #eef4ff; color: #3867d6; font-size: 12px; font-weight: 800; }
 
 @media (max-width: 1320px) {
   .workspace { grid-template-columns: 1fr; }

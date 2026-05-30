@@ -41,6 +41,7 @@ def simulate_publish(task_id: int, platforms: list, contents: dict) -> list:
             status, message, title, final_content = _validate_platform(platform, content)
 
         publish_time = datetime.now(timezone.utc).isoformat()
+        publish_id = f"mock_{platform}_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
         create_publish_record(
             task_id=task_id,
             platform=platform,
@@ -49,6 +50,7 @@ def simulate_publish(task_id: int, platforms: list, contents: dict) -> list:
             status=status,
             message=message,
             publish_time=publish_time,
+            publish_id=publish_id,
         )
 
         results.append(
@@ -57,6 +59,7 @@ def simulate_publish(task_id: int, platforms: list, contents: dict) -> list:
                 "status": status,
                 "message": message,
                 "publish_time": publish_time,
+                "publish_id": publish_id,
             }
         )
 

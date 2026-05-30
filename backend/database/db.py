@@ -95,6 +95,7 @@ def init_db() -> None:
     )
 
     _add_column_if_missing(cursor, "publish_record", "message", "TEXT")
+    _add_column_if_missing(cursor, "publish_record", "publish_id", "TEXT")
 
     cursor.execute(
         """
@@ -184,6 +185,7 @@ def create_publish_record(
     status: str,
     message: str,
     publish_time: str,
+    publish_id: str | None = None,
 ) -> None:
     connection = get_connection()
     cursor = connection.cursor()
@@ -191,11 +193,11 @@ def create_publish_record(
     cursor.execute(
         """
         INSERT INTO publish_record (
-            task_id, platform, final_title, final_content, status, message, publish_time
+            task_id, platform, final_title, final_content, status, message, publish_time, publish_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (task_id, platform, final_title, final_content, status, message, publish_time),
+        (task_id, platform, final_title, final_content, status, message, publish_time, publish_id),
     )
     connection.commit()
     connection.close()
@@ -313,7 +315,7 @@ def list_records(limit: int = 50) -> list:
 
     cursor.execute(
         """
-        SELECT id, platform, final_title, status, message, publish_time
+        SELECT id, platform, final_title, status, message, publish_time, publish_id
         FROM publish_record
         ORDER BY publish_time DESC
         LIMIT ?
@@ -334,6 +336,7 @@ def list_records(limit: int = 50) -> list:
                 "status": row["status"],
                 "message": row["message"],
                 "publish_time": row["publish_time"],
+                "publish_id": row["publish_id"] or f"mock_{row['platform']}_{row['id']}",
             }
         )
 
@@ -355,6 +358,7 @@ def get_record_detail(record_id: int) -> dict | None:
             r.status,
             r.message,
             r.publish_time,
+            r.publish_id,
             t.title AS task_title,
             t.content AS source_content,
             t.tags AS source_tags,
@@ -396,6 +400,7 @@ def get_record_detail(record_id: int) -> dict | None:
                 "videos": media_files.get("videos", []),
                 "cover": media_files.get("cover"),
                 "status": row["status"],
+                "publish_id": row["publish_id"] or f"mock_{content_row['platform']}_{row['id']}",
             }
         )
 
@@ -410,6 +415,7 @@ def get_record_detail(record_id: int) -> dict | None:
                 "videos": [],
                 "cover": None,
                 "status": row["status"],
+                "publish_id": row["publish_id"] or f"mock_{row['platform']}_{row['id']}",
             }
         )
 
@@ -422,6 +428,7 @@ def get_record_detail(record_id: int) -> dict | None:
         "publish_mode": "mock",
         "status": row["status"],
         "message": row["message"],
+        "publish_id": row["publish_id"] or f"mock_{row['platform']}_{row['id']}",
         "platforms": json.loads(row["task_platforms"]) if row["task_platforms"] else [row["platform"]],
         "platform_contents": platform_contents,
     }
