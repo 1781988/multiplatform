@@ -1244,7 +1244,7 @@ async function generateContent() {
         author: username.value || null,
         platforms: form.platforms,
         use_ai: form.useAi,
-        llm_provider: form.useAi ? form.llmProvider : null,
+        llm_provider: form.useAi ? aiSettings.provider || form.llmProvider : null,
         media_files: {
           images: form.images.map((item) => item.url),
           videos: form.videos.map((item) => item.url),
