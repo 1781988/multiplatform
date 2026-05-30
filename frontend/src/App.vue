@@ -103,7 +103,21 @@
         </div>
       </div>
       <div class="top-actions">
-        <button class="icon-btn" type="button" title="主题">☼</button>
+        <div class="theme-wrap">
+          <button class="icon-btn" type="button" title="主题" @click="themeMenuOpen = !themeMenuOpen">{{ themeIcon }}</button>
+          <section v-if="themeMenuOpen" class="theme-menu">
+            <button
+              v-for="item in themeOptions"
+              :key="item.value"
+              type="button"
+              :class="{ active: themeMode === item.value }"
+              @click="selectTheme(item.value)"
+            >
+              <span>{{ item.icon }}</span>
+              {{ item.label }}
+            </button>
+          </section>
+        </div>
         <div class="notification-wrap">
           <button class="icon-btn bell" type="button" title="通知" aria-label="通知" @click="notificationPanelOpen = !notificationPanelOpen">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -326,6 +340,8 @@ const materials = ref(sanitizeMaterials(JSON.parse(localStorage.getItem(`materia
 const history = ref(JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]"));
 const notifications = ref(JSON.parse(localStorage.getItem(`notifications:${username.value || "guest"}`) || "[]"));
 const notificationPanelOpen = ref(false);
+const themeMode = ref(localStorage.getItem("themeMode") || "light");
+const themeMenuOpen = ref(false);
 const IMAGE_MAX_COUNT = 9;
 const VIDEO_MAX_COUNT = 3;
 const COVER_MAX_COUNT = 1;
@@ -478,6 +494,12 @@ const selectedPlatforms = computed(() => platforms.filter((platform) => form.pla
 const previewList = computed(() => selectedPlatforms.value.map((platform) => ({ ...platform, content: adapted[platform.id] })).filter((item) => item.content));
 const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read));
 const filteredMaterials = computed(() => (materialFilter.value === "all" ? materials.value : materials.value.filter((item) => item.type === materialFilter.value)));
+const themeOptions = [
+  { value: "light", label: "亮色模式", icon: "☼" },
+  { value: "dark", label: "深色模式", icon: "●" },
+  { value: "system", label: "跟随系统", icon: "◐" }
+];
+const themeIcon = computed(() => themeOptions.find((item) => item.value === themeMode.value)?.icon || "☼");
 const materialStats = computed(() => {
   const totalSize = materials.value.reduce((sum, item) => sum + (item.size || 0), 0);
   return {
@@ -1179,6 +1201,24 @@ function markAllNotificationsRead() {
   persistNotifications();
 }
 
+function resolvedTheme(mode = themeMode.value) {
+  if (mode !== "system") return mode;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(mode = themeMode.value) {
+  const resolved = resolvedTheme(mode);
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.themeMode = mode;
+}
+
+function selectTheme(mode) {
+  themeMode.value = mode;
+  localStorage.setItem("themeMode", mode);
+  applyTheme(mode);
+  themeMenuOpen.value = false;
+}
+
 function fileExt(file) {
   const name = file?.name || "";
   const index = name.lastIndexOf(".");
@@ -1680,6 +1720,10 @@ function testModelConnection() {
 }
 
 onMounted(() => {
+  applyTheme();
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (themeMode.value === "system") applyTheme("system");
+  });
   if (!isAuthPage.value) {
     loadRecords();
     loadMaterials();
@@ -1702,12 +1746,33 @@ onMounted(() => {
   --line: #e9edf5;
   --panel: #ffffff;
   --page: #f6f8fc;
+  --bg: #f6f8fc;
+  --surface: #ffffff;
   --shadow: 0 12px 34px rgba(25, 34, 61, 0.07);
   --sidebar: 260px;
   --topbar: 74px;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --accent: #ff8a5c;
+  --accent-soft: #3b241d;
+  --blue: #78a8ff;
+  --red: #ff7385;
+  --green: #45d084;
+  --purple: #9b86ff;
+  --ink: #eef3ff;
+  --muted: #9da8bd;
+  --line: #2b3548;
+  --panel: #151c2b;
+  --page: #0d1320;
+  --bg: #0d1320;
+  --surface: #151c2b;
+  --shadow: 0 14px 40px rgba(0, 0, 0, 0.34);
+}
+
 * { box-sizing: border-box; }
+html, body, #app { min-height: 100%; background: var(--page); }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--page); color: var(--ink); font-family: "Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -1723,7 +1788,7 @@ a { color: inherit; text-decoration: none; }
 .error-text { margin: 0; color: #c63f2d; font-weight: 800; }
 .auth-link { text-align: center; color: var(--blue); font-weight: 800; }
 
-.app-shell { min-height: 100vh; padding: var(--topbar) 0 0 var(--sidebar); }
+.app-shell { min-height: 100vh; padding: var(--topbar) 0 0 var(--sidebar); background: var(--page); }
 .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 10; width: var(--sidebar); display: flex; flex-direction: column; gap: 22px; padding: 22px; background: #fff; border-right: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 12px; min-height: 50px; }
 .brand-logo { width: 54px; height: 54px; object-fit: contain; }
@@ -1780,6 +1845,131 @@ a { color: inherit; text-decoration: none; }
 .profile strong { font-size: 14px; }
 .profile div span { width: max-content; margin-top: 3px; padding: 2px 8px; border-radius: 99px; background: #fff2cc; color: #b88910; font-size: 11px; font-weight: 800; }
 .logout-btn { border: 0; background: transparent; color: #7a849a; font-weight: 800; }
+
+.theme-wrap { position: relative; }
+.theme-menu { position: absolute; top: 50px; right: 0; z-index: 40; width: 160px; display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 20px 60px rgba(18, 27, 47, 0.16); }
+.theme-menu button { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font-weight: 800; text-align: left; }
+.theme-menu button:hover, .theme-menu button.active { background: var(--accent-soft); color: var(--accent); }
+.theme-menu span { width: 18px; text-align: center; }
+
+:root[data-theme="dark"] .auth-card,
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .metric-card,
+:root[data-theme="dark"] .publish-overview-card,
+:root[data-theme="dark"] .profile,
+:root[data-theme="dark"] .notification-panel,
+:root[data-theme="dark"] .upgrade-dialog,
+:root[data-theme="dark"] .delete-dialog,
+:root[data-theme="dark"] .ai-config-dialog,
+:root[data-theme="dark"] .record-drawer,
+:root[data-theme="dark"] .preview-card,
+:root[data-theme="dark"] .account-card,
+:root[data-theme="dark"] .material-card,
+:root[data-theme="dark"] .media-card,
+:root[data-theme="dark"] .ai-provider-card,
+:root[data-theme="dark"] .platform-card,
+:root[data-theme="dark"] .record-row,
+:root[data-theme="dark"] .detail-card {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+}
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] #app,
+:root[data-theme="dark"] .app-shell,
+:root[data-theme="dark"] .workspace {
+  background: var(--page);
+}
+:root[data-theme="dark"] .topbar { background: rgba(21, 28, 43, 0.96); }
+:root[data-theme="dark"] .upgrade-card { background: linear-gradient(145deg, #211f36, #241b2f); color: #d7ccff; }
+:root[data-theme="dark"] .upgrade-card.pro { background: #102b21; color: #73e4aa; }
+:root[data-theme="dark"] .icon-btn,
+:root[data-theme="dark"] .ghost-btn,
+:root[data-theme="dark"] .primary-outline,
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  background: #101827;
+  border-color: var(--line);
+  color: var(--ink);
+}
+:root[data-theme="dark"] .empty-state,
+:root[data-theme="dark"] .notification-empty,
+:root[data-theme="dark"] .notification-item,
+:root[data-theme="dark"] .notification-item.unread,
+:root[data-theme="dark"] .media-hint-list,
+:root[data-theme="dark"] .material-preview,
+:root[data-theme="dark"] .material-preview.cover,
+:root[data-theme="dark"] .ai-provider-meta,
+:root[data-theme="dark"] .delete-record-preview,
+:root[data-theme="dark"] .source-text,
+:root[data-theme="dark"] .input-wrap,
+:root[data-theme="dark"] .tag-editor,
+:root[data-theme="dark"] .rich-editor,
+:root[data-theme="dark"] .more-platforms button,
+:root[data-theme="dark"] .pay-grid div,
+:root[data-theme="dark"] .thumb,
+:root[data-theme="dark"] .add-thumb,
+:root[data-theme="dark"] .cover-preview {
+  background: #101827;
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .field > span,
+:root[data-theme="dark"] .ai-panel label > span,
+:root[data-theme="dark"] .setting-field span,
+:root[data-theme="dark"] .ai-config-form label,
+:root[data-theme="dark"] .toolbar button,
+:root[data-theme="dark"] .toolbar .rewrite-btn,
+:root[data-theme="dark"] .material-info dd,
+:root[data-theme="dark"] .ai-provider-meta b,
+:root[data-theme="dark"] .profile strong,
+:root[data-theme="dark"] .metric-card strong {
+  color: var(--ink);
+}
+:root[data-theme="dark"] .brand span,
+:root[data-theme="dark"] .nav-item,
+:root[data-theme="dark"] .metric-card span,
+:root[data-theme="dark"] .metric-card small,
+:root[data-theme="dark"] .media-card strong span,
+:root[data-theme="dark"] .media-empty,
+:root[data-theme="dark"] .material-info dt,
+:root[data-theme="dark"] .library-toolbar > span,
+:root[data-theme="dark"] .overview-row,
+:root[data-theme="dark"] .tips-panel ul,
+:root[data-theme="dark"] .help-panel ul,
+:root[data-theme="dark"] .record-row span,
+:root[data-theme="dark"] .record-row small,
+:root[data-theme="dark"] .detail-meta,
+:root[data-theme="dark"] .detail-card p,
+:root[data-theme="dark"] .source-text,
+:root[data-theme="dark"] .notification-item p {
+  color: var(--muted);
+}
+:root[data-theme="dark"] .filter-tabs button,
+:root[data-theme="dark"] .segmented,
+:root[data-theme="dark"] .segmented button.active,
+:root[data-theme="dark"] .preview-tags span,
+:root[data-theme="dark"] .tag-editor span {
+  background: #101827;
+  border-color: var(--line);
+  color: var(--ink);
+}
+:root[data-theme="dark"] .platform-card.selected.wechat,
+:root[data-theme="dark"] .platform-card.selected.zhihu,
+:root[data-theme="dark"] .platform-card.selected.bilibili,
+:root[data-theme="dark"] .platform-card.selected.xiaohongshu {
+  background: #1b2638;
+  border-color: var(--accent);
+}
+:root[data-theme="dark"] .ai-default-card {
+  background: linear-gradient(135deg, #151f33, #201a2d);
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .danger-btn { background: #2a1620; border-color: #6b2d3a; color: #ff95a4; }
+:root[data-theme="dark"] .danger-btn:hover { background: #351a25; }
+:root[data-theme="dark"] .notice { background: #2c2115; border-color: #725233; color: #ffd0aa; }
 
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 22px; max-width: 1660px; margin: 0 auto; padding: 22px 28px 34px; }
 .workspace.wide { grid-template-columns: minmax(0, 1fr); }
