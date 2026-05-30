@@ -1,6 +1,12 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from database.db import create_publish_record
+
+
+class MockPublisher:
+    def publish(self, platform: str, title: str, content: str) -> str:
+        return f"mock_{platform}_{uuid4().hex[:12]}"
 
 
 def _get_main_content(platform: str, content: dict) -> str:
@@ -21,14 +27,18 @@ def _validate_platform(platform: str, content: dict) -> tuple[str, str, str, str
 
     if platform == "bilibili":
         video = str(content.get("video", "")).strip()
+        videos = content.get("videos") or []
         if not video:
-            return "failed", "缺少视频", title, main_content
+            video = str(videos[0]).strip() if videos else ""
+        if not video:
+            return "failed", "缺少视频素材", title, main_content
 
     return "success", "发布成功", title, main_content
 
 
 def simulate_publish(task_id: int, platforms: list, contents: dict) -> list:
     results = []
+    publisher = MockPublisher()
 
     for platform in platforms:
         content = contents.get(platform)
@@ -36,12 +46,16 @@ def simulate_publish(task_id: int, platforms: list, contents: dict) -> list:
         message = "内容缺失"
         title = ""
         final_content = ""
+        mock_publish_id = None
 
         if content:
             status, message, title, final_content = _validate_platform(platform, content)
+            if status == "success":
+                mock_publish_id = publisher.publish(platform, title, final_content)
+                message = "模拟发布成功"
 
         publish_time = datetime.now(timezone.utc).isoformat()
-        create_publish_record(
+        record_id = create_publish_record(
             task_id=task_id,
             platform=platform,
             final_title=title,
@@ -49,13 +63,17 @@ def simulate_publish(task_id: int, platforms: list, contents: dict) -> list:
             status=status,
             message=message,
             publish_time=publish_time,
+            mock_publish_id=mock_publish_id,
         )
 
         results.append(
             {
+                "id": record_id,
                 "platform": platform,
+                "title": title,
                 "status": status,
                 "message": message,
+                "mock_publish_id": mock_publish_id,
                 "publish_time": publish_time,
             }
         )

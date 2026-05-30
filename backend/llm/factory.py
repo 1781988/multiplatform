@@ -3,6 +3,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
+from database.db import get_ai_setting
+
 from .base_provider import BaseLLMProvider
 from .deepseek_provider import DeepSeekProvider
 from .gemini_provider import GeminiProvider
@@ -23,6 +25,88 @@ PROVIDER_BUILDERS = {
 }
 
 AVAILABLE_PROVIDERS = list(PROVIDER_BUILDERS.keys())
+
+
+def _setting_value(settings: dict, provider: str, field: str, default=None):
+    key = f"{provider}{field[0].upper()}{field[1:]}"
+    value = settings.get(key)
+    return default if value in (None, "") else value
+
+
+def _float_value(value, default: float = 0.7) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_value(value, default: int | None = None) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return number if number > 0 else default
+
+
+def load_provider_from_settings(provider: str, settings: dict | None = None) -> Optional[BaseLLMProvider]:
+    key = provider.strip().lower()
+    if key not in PROVIDER_BUILDERS:
+        return None
+
+    settings = settings or get_ai_setting()
+    if not settings:
+        return None
+
+    temperature = _float_value(_setting_value(settings, key, "temperature", 0.7))
+    max_tokens = _int_value(_setting_value(settings, key, "maxTokens"))
+
+    try:
+        if key == "openai":
+            api_key = _setting_value(settings, key, "key", "")
+            base_url = _setting_value(settings, key, "baseUrl", "https://api.openai.com/v1")
+            model = _setting_value(settings, key, "model", "gpt-4o-mini")
+            if not api_key:
+                return None
+            return OpenAICompatibleProvider(api_key, base_url, model, temperature, max_tokens)
+
+        if key == "gemini":
+            api_key = _setting_value(settings, key, "key", "")
+            model = _setting_value(settings, key, "model", "gemini-1.5-flash")
+            if not api_key:
+                return None
+            return GeminiProvider(api_key, model, temperature, max_tokens)
+
+        if key == "qwen":
+            api_key = _setting_value(settings, key, "key", "")
+            base_url = _setting_value(settings, key, "baseUrl", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+            model = _setting_value(settings, key, "model", "qwen-plus")
+            if not api_key:
+                return None
+            return QwenProvider(api_key, base_url, model, temperature, max_tokens)
+
+        if key == "deepseek":
+            api_key = _setting_value(settings, key, "key", "")
+            base_url = _setting_value(settings, key, "baseUrl", "https://api.deepseek.com")
+            model = _setting_value(settings, key, "model", "deepseek-chat")
+            if not api_key:
+                return None
+            return DeepSeekProvider(api_key, base_url, model, temperature, max_tokens)
+
+        if key == "ollama":
+            base_url = _setting_value(settings, key, "baseUrl", "http://localhost:11434")
+            model = _setting_value(settings, key, "model", "qwen2.5:7b")
+            return OllamaProvider(base_url, model, temperature, max_tokens)
+
+        if key == "local":
+            api_key = _setting_value(settings, key, "key", "local")
+            base_url = _setting_value(settings, key, "baseUrl", "http://127.0.0.1:8000/v1")
+            model = _setting_value(settings, key, "model", "local-model")
+            return LocalProvider(base_url, model, api_key, temperature, max_tokens)
+
+    except Exception:
+        return None
+
+    return None
 
 
 def load_provider_from_env(provider: str) -> Optional[BaseLLMProvider]:
@@ -79,4 +163,4 @@ def load_provider_from_env(provider: str) -> Optional[BaseLLMProvider]:
 
 
 def get_llm_provider(provider: str) -> Optional[BaseLLMProvider]:
-    return load_provider_from_env(provider)
+    return load_provider_from_settings(provider) or load_provider_from_env(provider)
