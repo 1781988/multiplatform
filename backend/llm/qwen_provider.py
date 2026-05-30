@@ -9,5 +9,13 @@ class QwenProvider(OpenAICompatibleProvider):
         api_key: str,
         base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
         model: str = "qwen-plus",
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
     ):
-        super().__init__(api_key=api_key, base_url=base_url, model=model)
+        super().__init__(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
