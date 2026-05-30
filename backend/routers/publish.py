@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
-from database.db import get_record_detail, list_platform_contents, list_records
+from database.db import delete_record, get_record_detail, list_platform_contents, list_records
 from models.schemas import PublishRequest
 from services.publish_service import simulate_publish
 
@@ -54,3 +54,10 @@ def record_detail(record_id: int):
     if not detail:
         return JSONResponse(status_code=404, content={"code": 404, "message": "记录不存在"})
     return {"code": 200, "data": detail}
+
+
+@router.delete("/records/{record_id}")
+def remove_record(record_id: int):
+    if not delete_record(record_id):
+        return JSONResponse(status_code=404, content={"code": 404, "message": "记录不存在"})
+    return {"code": 200, "message": "记录已删除", "data": {"id": record_id}}

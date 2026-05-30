@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
 from database.db import init_db, list_records
 from models.schemas import ContentGenerateRequest, MediaFiles
 from services.adapter_service import adapt_content
+from services import llm_service
 from services.publish_service import simulate_publish
 
 
@@ -52,6 +53,19 @@ class SmokeTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             adapt_content(payload)
+
+    def test_ai_failure_falls_back_to_all_selected_platforms(self) -> None:
+        payload = self.payload.model_copy(update={"use_ai": True, "llm_provider": "openai"})
+        original = llm_service.get_llm_provider
+        llm_service.get_llm_provider = lambda provider: None
+        try:
+            result = adapt_content(payload)
+        finally:
+            llm_service.get_llm_provider = original
+
+        self.assertEqual(set(result.keys()), set(payload.platforms))
+        self.assertIn("content", result["wechat"])
+        self.assertIn("description", result["bilibili"])
 
     def test_simulate_publish_records(self) -> None:
         init_db()
