@@ -55,18 +55,25 @@
         </router-link>
       </nav>
 
-      <div class="daily-card">
-        <p>今日发布统计</p>
-        <div class="daily-ring" :style="{ '--progress': `${progressPercent}%` }">
-          <span>{{ publishedToday }}/{{ dailyLimit }}</span>
-        </div>
-        <div class="daily-row">
-          <span>今日已发布</span>
-          <strong>{{ publishedToday }} 篇</strong>
-        </div>
-        <div class="daily-row">
-          <span>剩余可发布</span>
-          <strong>{{ Math.max(dailyLimit - publishedToday, 0) }} 篇</strong>
+      <div class="publish-overview-card">
+        <p>发布概览</p>
+        <div class="publish-overview-grid">
+          <div class="publish-overview-item">
+            <span>今日发布</span>
+            <strong>{{ publishOverview.today }} 篇</strong>
+          </div>
+          <div class="publish-overview-item">
+            <span>本周发布</span>
+            <strong>{{ publishOverview.week }} 篇</strong>
+          </div>
+          <div class="publish-overview-item">
+            <span>累计发布</span>
+            <strong>{{ publishOverview.total }} 篇</strong>
+          </div>
+          <div class="publish-overview-item">
+            <span>发布成功率</span>
+            <strong>{{ publishOverview.successRate }}%</strong>
+          </div>
         </div>
       </div>
 
@@ -217,7 +224,6 @@ const taskId = ref(null);
 const loading = reactive({ adapt: false, publish: false, records: false, materials: false, settings: false });
 const publishResults = ref([]);
 const adapted = reactive({});
-const dailyLimit = 10;
 const materials = ref(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
 const history = ref(JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]"));
 const coverPlaceholder = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=900&q=80";
@@ -312,8 +318,33 @@ const rewriteModes = [
 const isAuthPage = computed(() => route.path === "/login" || route.path === "/register");
 const isWidePage = computed(() => ["/dashboard", "/records", "/accounts", "/materials", "/settings", "/help"].includes(route.path));
 const showSideColumn = computed(() => ["/content", "/preview"].includes(route.path));
-const publishedToday = computed(() => history.value.length);
-const progressPercent = computed(() => (dailyLimit ? Math.round((publishedToday.value / dailyLimit) * 100) : 0));
+const publishOverview = computed(() => {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = now.getDay() || 7;
+  const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1).getTime();
+
+  let today = 0;
+  let week = 0;
+  let success = 0;
+  let failed = 0;
+
+  history.value.forEach((record) => {
+    const time = parsePublishTime(record.publish_time);
+    if (time >= startOfToday) today += 1;
+    if (time >= startOfWeek) week += 1;
+    if (record.status === "success") success += 1;
+    if (record.status === "failed") failed += 1;
+  });
+
+  const counted = success + failed;
+  return {
+    today,
+    week,
+    total: history.value.length,
+    successRate: counted ? Math.round((success / counted) * 100) : 0
+  };
+});
 const parsedTags = computed(() =>
   form.tagsText
     .split(/[,，、\s]+/)
@@ -354,7 +385,7 @@ const DashboardView = page(() => [
     ])
   ]),
   h("div", { class: "metric-grid" }, [
-    metric("今日发布", `${publishedToday.value}/${dailyLimit}`, "按当前用户统计"),
+    metric("今日发布", `${publishOverview.value.today} 篇`, "按当前用户统计"),
     metric("素材容量", materialStats.value.size, `${materials.value.length} 个素材`),
     metric("AI 模型", providerLabel(form.llmProvider), "当前默认生成模型"),
     metric("账号状态", `${Object.values(accounts).filter((item) => item.loggedIn).length}/4`, "已模拟登录平台")
@@ -841,6 +872,13 @@ function materialFilterLabel(type) {
   return { all: "全部", image: "图片", video: "视频", cover: "封面" }[type] || type;
 }
 
+function parsePublishTime(value) {
+  if (!value) return 0;
+  const normalized = typeof value === "string" ? value.replace(" ", "T") : value;
+  const time = new Date(normalized).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
 function formatSize(size = 0) {
   if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)}MB`;
   if (size >= 1024) return `${(size / 1024).toFixed(1)}KB`;
@@ -1290,13 +1328,13 @@ a { color: inherit; text-decoration: none; }
 .nav-item.active::before { content: ""; position: absolute; left: -22px; width: 4px; height: 28px; border-radius: 0 4px 4px 0; background: var(--accent); }
 .nav-icon { width: 24px; text-align: center; font-size: 18px; }
 
-.daily-card, .upgrade-card, .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
-.daily-card { margin-top: auto; padding: 18px; }
-.daily-card p { margin: 0 0 14px; font-weight: 800; font-size: 14px; }
-.daily-ring { width: 86px; height: 86px; display: grid; place-items: center; margin: 0 auto 16px; border-radius: 50%; background: radial-gradient(circle at center, #fff 54%, transparent 56%), conic-gradient(var(--accent) var(--progress), #edf0f5 0); }
-.daily-ring span { font-size: 20px; font-weight: 900; }
-.daily-row { display: flex; justify-content: space-between; color: #68728b; font-size: 13px; line-height: 2; }
-.daily-row strong { color: var(--ink); }
+.publish-overview-card, .upgrade-card, .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+.publish-overview-card { margin-top: auto; padding: 18px; }
+.publish-overview-card p { margin: 0 0 14px; font-weight: 800; font-size: 14px; }
+.publish-overview-grid { display: grid; gap: 10px; }
+.publish-overview-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; padding-bottom: 9px; border-bottom: 1px solid #f0f2f7; color: #68728b; font-size: 13px; }
+.publish-overview-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.publish-overview-item strong { color: var(--ink); font-size: 16px; white-space: nowrap; }
 .upgrade-card { display: grid; gap: 8px; padding: 18px; background: linear-gradient(145deg, #f0edff, #fff6fb); color: var(--purple); }
 .upgrade-card.pro { background: #f1fff8; color: #138452; }
 .upgrade-card span { font-size: 13px; }
