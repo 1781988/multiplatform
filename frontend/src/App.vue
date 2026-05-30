@@ -696,18 +696,20 @@ function recordRow(record, table = false) {
   const open = () => openRecordDetail(record);
   if (table) {
     return h("div", { class: "record-row table", onClick: open }, [
-      h("span", record.publish_time || "刚刚"),
-      h("strong", record.title || form.title),
-      h("span", platformName(record.platform || record.id)),
-      h("b", record.status === "failed" ? "失败" : "成功"),
-      h("button", { class: "ghost-btn small" }, "查看详情")
+      h("span", { class: "record-time" }, formatPublishTime(record.publish_time)),
+      h("strong", { class: "record-title", title: record.title || form.title }, record.title || form.title),
+      h("span", { class: "record-platform" }, platformName(record.platform || record.id)),
+      h("span", { class: "record-status" }, publishStatusTags(record)),
+      h("span", { class: "record-action" }, [
+        h("button", { class: "ghost-btn small", onClick: (event) => { event.stopPropagation(); open(); } }, "查看详情")
+      ])
     ]);
   }
   return h("div", { class: "record-row", onClick: open }, [
     h("strong", record.title || form.title),
     h("span", platformName(record.platform || record.id)),
-    h("b", record.status === "failed" ? "失败" : "成功"),
-    h("small", record.publish_time || "刚刚")
+    h("span", { class: "record-status" }, publishStatusTags(record)),
+    h("small", formatPublishTime(record.publish_time))
   ]);
 }
 
@@ -877,6 +879,22 @@ function parsePublishTime(value) {
   const normalized = typeof value === "string" ? value.replace(" ", "T") : value;
   const time = new Date(normalized).getTime();
   return Number.isNaN(time) ? 0 : time;
+}
+
+function formatPublishTime(value) {
+  const time = parsePublishTime(value);
+  if (!time) return "-";
+  const date = new Date(time);
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function publishStatusTags(record) {
+  const status = record.status === "failed" ? "failed" : "success";
+  return [
+    h("span", { class: ["status-tag", status] }, status === "failed" ? "失败" : "成功"),
+    h("span", { class: ["status-tag", "mock"] }, "模拟发布")
+  ];
 }
 
 function formatSize(size = 0) {
@@ -1463,12 +1481,71 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .empty-state { padding: 18px; border: 1px dashed #d8deea; border-radius: 8px; background: #fbfcff; color: #69738a; font-weight: 700; }
 .empty-state a { color: var(--blue); margin-left: 8px; cursor: pointer; }
 .record-list, .record-table { display: grid; gap: 10px; }
-.record-head, .record-row.table { display: grid; grid-template-columns: 180px 1fr 140px 80px 100px; gap: 12px; align-items: center; }
-.record-head { padding: 0 14px; color: #7b8498; font-size: 13px; font-weight: 900; }
-.record-row { display: grid; grid-template-columns: 1fr 120px 70px 180px; gap: 12px; align-items: center; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; cursor: pointer; }
-.record-row.table { grid-template-columns: 180px 1fr 140px 80px 100px; }
+.record-table { overflow-x: auto; }
+.record-head, .record-row.table {
+  display: grid;
+  grid-template-columns: 160px minmax(260px, 1fr) 130px 170px 96px;
+  gap: 16px;
+  align-items: center;
+  min-width: 880px;
+}
+.record-head {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: #f6f8fc;
+  color: #7b8498;
+  font-size: 13px;
+  font-weight: 900;
+}
+.record-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px 170px 180px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+  cursor: pointer;
+}
+.record-row.table {
+  grid-template-columns: 160px minmax(260px, 1fr) 130px 170px 96px;
+  padding: 14px 16px;
+}
+.record-row:hover { background: #f7f9fd; }
 .record-row span, .record-row small { color: #6e788e; }
-.record-row b { color: var(--green); }
+.record-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.record-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-platform { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.record-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.record-action {
+  display: flex;
+  justify-content: flex-end;
+}
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+.status-tag.success { background: #eaf8f0; color: #16834a; }
+.status-tag.failed { background: #fff0f1; color: #c93648; }
+.status-tag.mock { background: #eef4ff; color: #3867d6; }
 
 .account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .account-card { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
@@ -1517,7 +1594,7 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
   .workspace { padding: 14px; }
   .media-grid, .side-column, .preview-grid, .platform-grid, .metric-grid, .material-stats, .account-grid, .settings-grid, .detail-platforms, .detail-meta { grid-template-columns: 1fr; }
   .ai-panel { grid-template-columns: 1fr; }
-  .record-row, .record-row.table, .record-head { grid-template-columns: 1fr; }
+  .record-row:not(.table) { grid-template-columns: 1fr; }
   .dashboard-hero { display: grid; }
 }
 </style>
