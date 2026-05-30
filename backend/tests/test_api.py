@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from database.db import init_db
+from database.db import create_media_file, init_db
 from main import app
 
 
@@ -55,6 +55,18 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertIn("openai", data)
+
+    def test_materials_list_and_delete(self) -> None:
+        create_media_file(None, "library-test.jpg", "/uploads/images/library-test.jpg", "image", 1024)
+        list_response = self.client.get("/api/materials")
+        self.assertEqual(list_response.status_code, 200)
+        materials = list_response.json()["data"]
+        item = next(material for material in materials if material["name"] == "library-test.jpg")
+        self.assertEqual(item["format"], "jpg")
+
+        delete_response = self.client.delete(f"/api/materials/{item['id']}")
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(delete_response.json()["code"], 200)
 
     def test_ai_settings_default_provider_fallback_generation(self) -> None:
         settings_payload = {
@@ -110,12 +122,16 @@ class ApiIntegrationTests(unittest.TestCase):
         publish_data = publish_response.json()
         self.assertEqual(publish_data["message"], "发布完成")
         self.assertEqual(len(publish_data["data"]), 2)
+        for item in publish_data["data"]:
+            self.assertEqual(item["status"], "success")
+            self.assertTrue(item["mock_publish_id"].startswith(f"mock_{item['platform']}_"))
 
         records_response = self.client.get("/api/records?limit=5")
         self.assertEqual(records_response.status_code, 200)
         records = records_response.json()["data"]
         self.assertIsInstance(records, list)
         self.assertTrue(any(record["platform"] == "wechat" for record in records))
+        self.assertTrue(any(record.get("mock_publish_id") for record in records))
 
     def test_publish_api_error_missing_contents(self) -> None:
         payload = {"task_id": 1000, "platforms": ["wechat"]}

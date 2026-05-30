@@ -103,13 +103,47 @@
         </div>
       </div>
       <div class="top-actions">
-        <button class="icon-btn" type="button" title="主题">☼</button>
-        <button class="icon-btn bell" type="button" title="通知" aria-label="通知">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-          </svg>
-        </button>
+        <div class="theme-wrap">
+          <button class="icon-btn" type="button" title="主题" @click="themeMenuOpen = !themeMenuOpen">{{ themeIcon }}</button>
+          <section v-if="themeMenuOpen" class="theme-menu">
+            <button
+              v-for="item in themeOptions"
+              :key="item.value"
+              type="button"
+              :class="{ active: themeMode === item.value }"
+              @click="selectTheme(item.value)"
+            >
+              <span>{{ item.icon }}</span>
+              {{ item.label }}
+            </button>
+          </section>
+        </div>
+        <div class="notification-wrap">
+          <button class="icon-btn bell" type="button" title="通知" aria-label="通知" @click="notificationPanelOpen = !notificationPanelOpen">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+              <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+            </svg>
+            <b v-if="unreadNotifications.length">{{ unreadNotifications.length > 9 ? "9+" : unreadNotifications.length }}</b>
+          </button>
+          <section v-if="notificationPanelOpen" class="notification-panel">
+            <div class="notification-head">
+              <strong>通知中心</strong>
+              <button v-if="unreadNotifications.length" type="button" @click="markAllNotificationsRead">全部已读</button>
+            </div>
+            <div v-if="notifications.length" class="notification-list">
+              <article v-for="item in notifications" :key="item.id" class="notification-item" :class="{ unread: !item.read, [item.type]: true }">
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <p>{{ item.message }}</p>
+                  <small>{{ item.time }}</small>
+                </div>
+                <button v-if="!item.read" type="button" @click="markNotificationRead(item.id)">已读</button>
+              </article>
+            </div>
+            <div v-else class="notification-empty">暂无新通知</div>
+          </section>
+        </div>
         <div class="profile">
           <div class="avatar">{{ username.slice(0, 1) || "明" }}</div>
           <div>
@@ -242,6 +276,7 @@
         <div class="detail-meta">
           <span>发布时间：{{ selectedRecord?.publish_time || "-" }}</span>
           <span>发布模式：{{ selectedRecord?.publish_mode || "mock" }}</span>
+          <span>模拟发布ID：{{ selectedRecord?.mock_publish_id || "-" }}</span>
           <span>状态：{{ selectedRecord?.status || "success" }}</span>
           <span>平台数：{{ selectedRecord?.platform_contents?.length || 0 }}</span>
         </div>
@@ -302,9 +337,20 @@ const taskId = ref(null);
 const loading = reactive({ adapt: false, publish: false, records: false, materials: false, settings: false });
 const publishResults = ref([]);
 const adapted = reactive({});
-const materials = ref(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
+const materials = ref(sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]")));
 const history = ref(JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]"));
-const coverPlaceholder = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=900&q=80";
+const notifications = ref(JSON.parse(localStorage.getItem(`notifications:${username.value || "guest"}`) || "[]"));
+const notificationPanelOpen = ref(false);
+const themeMode = ref(localStorage.getItem("themeMode") || "light");
+const themeMenuOpen = ref(false);
+const IMAGE_MAX_COUNT = 9;
+const VIDEO_MAX_COUNT = 3;
+const COVER_MAX_COUNT = 1;
+const IMAGE_MAX_SIZE = 10 * 1024 * 1024;
+const VIDEO_MAX_SIZE = 500 * 1024 * 1024;
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+const VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-msvideo", "video/x-matroska"];
+const VIDEO_EXTS = [".mp4", ".mov", ".avi", ".mkv"];
 
 const aiSettings = reactive({
   provider: "openai",
@@ -447,7 +493,14 @@ const parsedTags = computed(() =>
 );
 const selectedPlatforms = computed(() => platforms.filter((platform) => form.platforms.includes(platform.id)));
 const previewList = computed(() => selectedPlatforms.value.map((platform) => ({ ...platform, content: adapted[platform.id] })).filter((item) => item.content));
+const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read));
 const filteredMaterials = computed(() => (materialFilter.value === "all" ? materials.value : materials.value.filter((item) => item.type === materialFilter.value)));
+const themeOptions = [
+  { value: "light", label: "亮色模式", icon: "☼" },
+  { value: "dark", label: "深色模式", icon: "●" },
+  { value: "system", label: "跟随系统", icon: "◐" }
+];
+const themeIcon = computed(() => themeOptions.find((item) => item.value === themeMode.value)?.icon || "☼");
 const materialStats = computed(() => {
   const totalSize = materials.value.reduce((sum, item) => sum + (item.size || 0), 0);
   return {
@@ -561,10 +614,10 @@ const AccountsView = page(() => [
 ]);
 
 const MaterialsView = page(() => [
-  h("article", { class: "panel" }, [
+  h("article", { class: "panel material-library" }, [
     h("div", { class: "panel-head" }, [
-      h("div", [h("h2", "全局素材库"), h("p", "管理历史上传素材，可筛选、删除、复制链接或加入当前创作。")]),
-      h("button", { class: "ghost-btn", onClick: loadMaterials }, "刷新素材")
+      h("div", [h("h2", "全局素材库"), h("p", "集中管理历史上传的图片、视频和封面素材，可筛选、删除并加入当前创作任务。")]),
+      h("button", { class: "ghost-btn", disabled: loading.materials, onClick: loadMaterials }, loading.materials ? "刷新中..." : "刷新素材")
     ]),
     h("div", { class: "material-stats" }, [
       metric("图片", `${materialStats.value.image} 张`, "jpg/png/webp"),
@@ -572,12 +625,15 @@ const MaterialsView = page(() => [
       metric("封面", `${materialStats.value.cover} 张`, "推荐 16:9 或 3:4"),
       metric("总占用", materialStats.value.size, "本地/后端素材")
     ]),
-    h("div", { class: "filter-tabs" }, ["all", "image", "video", "cover"].map((type) =>
-      h("button", { class: { active: materialFilter.value === type }, onClick: () => (materialFilter.value = type) }, materialFilterLabel(type))
-    )),
+    h("div", { class: "library-toolbar" }, [
+      h("div", { class: "filter-tabs" }, ["all", "image", "video", "cover"].map((type) =>
+        h("button", { class: { active: materialFilter.value === type }, onClick: () => (materialFilter.value = type) }, `${materialFilterLabel(type)} ${materialFilterCount(type)}`)
+      )),
+      h("span", `${filteredMaterials.value.length} 个素材`)
+    ]),
     filteredMaterials.value.length
       ? h("div", { class: "material-grid" }, filteredMaterials.value.map((item) => materialCard(item)))
-      : h("div", { class: "empty-state" }, "暂无素材，请在内容创作页上传图片、视频或封面。")
+      : h("div", { class: "empty-state" }, "暂无匹配素材，请在内容创作页上传图片、视频或封面。")
   ])
 ]);
 
@@ -724,31 +780,45 @@ function hiddenInputs() {
 }
 
 function mediaUploadGrid() {
+  const imageHints = ["格式：JPG / PNG / WEBP", "大小：单张不超过 10MB，最多 9 张", "推荐：公众号 900x500，知乎 1200x675，小红书 1080x1440"];
+  const videoHints = ["格式：MP4 / MOV / AVI / MKV", "大小：单个不超过 500MB，最多 3 个", "推荐：B站 1920x1080，小红书 1080x1920"];
+  const coverHints = ["格式：JPG / PNG / WEBP", "大小：1 张，不超过 10MB", "推荐：B站 1920x1080，公众号 900x383，小红书 1080x1440"];
   return h("div", { class: "media-grid" }, [
-    uploadCard("图片", `${form.images.length}/9`, "支持 jpg/png/webp，单张不超过 10MB，最多 9 张。推荐：公众号 900x500，知乎 1200x675，小红书 1080x1440。", form.images, "images", () => imageInput.value?.click()),
-    uploadCard("视频", `${form.videos.length}/3`, "支持 mp4/mov/avi/mkv，单个不超过 500MB，最多 3 个。推荐：B站 1920x1080，小红书 1080x1920。", form.videos, "videos", () => videoInput.value?.click()),
+    uploadCard("图片", `${form.images.length}/${IMAGE_MAX_COUNT}`, imageHints, form.images, "images", () => imageInput.value?.click()),
+    uploadCard("视频", `${form.videos.length}/${VIDEO_MAX_COUNT}`, videoHints, form.videos, "videos", () => videoInput.value?.click()),
     h("div", { class: "media-card cover-card" }, [
-      h("strong", "封面图"),
-      h("p", { class: "media-hint" }, "支持 jpg/png/webp，不超过 10MB。推荐：B站 1920x1080，公众号 900x383，小红书 1080x1440。"),
-      h("div", { class: "cover-preview" }, h("img", { src: form.cover?.url || coverPlaceholder, alt: "封面图" })),
-      h("button", { class: "ghost-btn small", onClick: () => coverInput.value?.click() }, "更换封面")
+      h("strong", ["封面图", h("span", ` (${form.cover ? COVER_MAX_COUNT : 0}/${COVER_MAX_COUNT})`)]),
+      h("ul", { class: "media-hint-list" }, coverHints.map((hint) => h("li", hint))),
+      h("div", { class: "cover-preview-wrap" }, [
+        h("div", { class: ["cover-preview", { empty: !form.cover }] }, form.cover ? h("img", { src: form.cover.url, alt: "封面图" }) : h("span", "未上传")),
+        form.cover ? h("div", { class: "media-meta" }, [
+          h("strong", form.cover.name || "封面图"),
+          h("span", formatSize(form.cover.size))
+        ]) : h("p", { class: "media-empty" }, "尚未上传封面")
+      ]),
+      h("div", { class: "cover-actions" }, [
+        h("button", { class: "ghost-btn small", onClick: () => coverInput.value?.click() }, form.cover ? "更换封面" : "上传封面"),
+        form.cover ? h("button", { class: "danger-btn small", onClick: removeCover }, "删除") : null
+      ])
     ])
   ]);
 }
 
 function uploadCard(title, count, hint, list, type, onAdd) {
+  const maxCount = type === "videos" ? VIDEO_MAX_COUNT : IMAGE_MAX_COUNT;
   return h("div", { class: "media-card" }, [
     h("strong", [title, h("span", ` (${count})`)]),
-    h("p", { class: "media-hint" }, hint),
+    h("ul", { class: "media-hint-list" }, hint.map((item) => h("li", item))),
     h("div", { class: "media-list" }, [
       ...list.map((item, index) =>
         h("div", { class: ["thumb", type === "videos" ? "video-thumb" : "image-thumb"] }, [
           type === "videos" ? h("span", "▷") : h("img", { src: item.url, alt: item.name }),
           h("small", item.name),
-          h("button", { class: "delete-media", onClick: () => removeMedia(type, index) }, "×")
+          h("em", formatSize(item.size)),
+          h("button", { class: "delete-media", title: "删除素材", onClick: () => removeMedia(type, index) }, "×")
         ])
       ),
-      list.length < (type === "videos" ? 3 : 9) ? h("button", { class: "add-thumb", onClick: onAdd }, "+") : null
+      list.length < maxCount ? h("button", { class: "add-thumb", onClick: onAdd }, "+") : null
     ])
   ]);
 }
@@ -796,14 +866,20 @@ function recordRow(record, table = false) {
 
 function materialCard(item) {
   return h("section", { class: "material-card" }, [
-    h("div", { class: "material-preview" }, item.type === "video" ? h("span", "视频") : h("img", { src: item.url, alt: item.name })),
-    h("strong", item.name),
-    h("span", `${materialFilterLabel(item.type)} · ${formatSize(item.size)}`),
-    h("small", `上传时间：${item.created_at || "本地预览"} · 使用 ${item.usage_count || 0} 次`),
+    h("div", { class: ["material-preview", item.type] }, item.type === "video" ? h("span", "视频") : h("img", { src: item.url, alt: item.name })),
+    h("div", { class: "material-info" }, [
+      h("strong", item.name || "未命名素材"),
+      h("dl", [
+        h("dt", "类型"), h("dd", materialFilterLabel(item.type)),
+        h("dt", "大小"), h("dd", formatSize(item.size)),
+        h("dt", "格式"), h("dd", materialFormat(item)),
+        h("dt", "上传时间"), h("dd", formatMaterialTime(item.created_at)),
+      ])
+    ]),
     h("div", { class: "card-actions" }, [
-      h("button", { class: "ghost-btn small", onClick: () => copyText(item.url) }, "复制链接"),
       h("button", { class: "ghost-btn small", onClick: () => addMaterialToCurrentTask(item) }, "加入创作"),
-      h("button", { class: "ghost-btn small", onClick: () => removeMaterial(item) }, "删除")
+      h("button", { class: "ghost-btn small", onClick: () => copyText(item.url) }, "复制链接"),
+      h("button", { class: "danger-btn small", onClick: () => removeMaterial(item) }, "删除")
     ])
   ]);
 }
@@ -901,7 +977,8 @@ function applyLogin(data) {
 
 async function afterAuth() {
   history.value = JSON.parse(localStorage.getItem(`records:${username.value}`) || "[]");
-  materials.value = JSON.parse(localStorage.getItem(`materials:${username.value}`) || "[]");
+  materials.value = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value}`) || "[]"));
+  notifications.value = JSON.parse(localStorage.getItem(notificationStorageKey()) || "[]");
   await Promise.all([loadRecords(), loadMaterials(), loadAiSettings(), loadAccounts()]);
   router.push("/dashboard");
 }
@@ -1058,6 +1135,117 @@ function formatSize(size = 0) {
   return `${size || 0}B`;
 }
 
+function isLegacySampleMaterial(item) {
+  const sampleUrls = ["/uploads/images/cover.jpg", "/uploads/videos/demo.mp4", "/uploads/covers/cover.jpg"];
+  return sampleUrls.includes(item?.url) && !(item?.size > 0);
+}
+
+function sanitizeMaterials(list = []) {
+  return list.filter((item) => !isLegacySampleMaterial(item));
+}
+
+function materialFilterCount(type) {
+  if (type === "all") return materials.value.length;
+  return materials.value.filter((item) => item.type === type).length;
+}
+
+function materialFormat(item) {
+  const fromApi = item.format || "";
+  if (fromApi) return fromApi.toUpperCase();
+  const name = item.name || item.url || "";
+  const ext = name.includes(".") ? name.split(".").pop() : "";
+  return ext ? ext.toUpperCase() : "-";
+}
+
+function formatMaterialTime(value) {
+  if (!value) return "本地预览";
+  const date = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function notificationStorageKey() {
+  return `notifications:${username.value || "guest"}`;
+}
+
+function persistNotifications() {
+  localStorage.setItem(notificationStorageKey(), JSON.stringify(notifications.value));
+}
+
+function addNotification(type, title, message) {
+  notifications.value = [
+    {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      type,
+      title,
+      message,
+      time: new Date().toLocaleString(),
+      read: false
+    },
+    ...notifications.value
+  ].slice(0, 50);
+  persistNotifications();
+}
+
+function markNotificationRead(id) {
+  const item = notifications.value.find((notification) => notification.id === id);
+  if (!item) return;
+  item.read = true;
+  persistNotifications();
+}
+
+function markAllNotificationsRead() {
+  notifications.value.forEach((notification) => {
+    notification.read = true;
+  });
+  persistNotifications();
+}
+
+function resolvedTheme(mode = themeMode.value) {
+  if (mode !== "system") return mode;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(mode = themeMode.value) {
+  const resolved = resolvedTheme(mode);
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.themeMode = mode;
+}
+
+function selectTheme(mode) {
+  themeMode.value = mode;
+  localStorage.setItem("themeMode", mode);
+  applyTheme(mode);
+  themeMenuOpen.value = false;
+}
+
+function fileExt(file) {
+  const name = file?.name || "";
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index).toLowerCase() : "";
+}
+
+function isAllowedVideo(file) {
+  return VIDEO_TYPES.includes(file.type) || VIDEO_EXTS.includes(fileExt(file));
+}
+
+function validateUploadFile(file, type) {
+  if (type === "image") {
+    if (!IMAGE_TYPES.includes(file.type)) return "只能上传 JPG / PNG / WEBP 图片。";
+    if (file.size > IMAGE_MAX_SIZE) return "单张图片不能超过 10MB。";
+  }
+  if (type === "video") {
+    if (!isAllowedVideo(file)) return "只能上传 MP4 / MOV / AVI / MKV 视频。";
+    if (file.size > VIDEO_MAX_SIZE) return "单个视频不能超过 500MB。";
+  }
+  if (type === "cover") {
+    if (!IMAGE_TYPES.includes(file.type)) return "封面必须是 JPG / PNG / WEBP 图片。";
+    if (file.size > IMAGE_MAX_SIZE) return "封面不能超过 10MB。";
+  }
+  return "";
+}
+
 async function uploadFile(file, type) {
   const body = new FormData();
   body.append("file", file);
@@ -1102,16 +1290,13 @@ function upsertMaterial(item) {
 async function handleImageUpload(event) {
   const files = Array.from(event.target.files || []);
   for (const file of files) {
-    if (form.images.length >= 9) {
-      notice.value = "最多只能上传 9 张图片。";
+    if (form.images.length >= IMAGE_MAX_COUNT) {
+      notice.value = "图片最多只能上传 9 张。";
       break;
     }
-    if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type)) {
-      notice.value = "只能上传 jpg/png/jpeg/webp 图片。";
-      continue;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      notice.value = "单张图片不能超过 10MB。";
+    const error = validateUploadFile(file, "image");
+    if (error) {
+      notice.value = error;
       continue;
     }
     form.images.push(await addLocalFile(file, "image"));
@@ -1122,16 +1307,13 @@ async function handleImageUpload(event) {
 async function handleVideoUpload(event) {
   const files = Array.from(event.target.files || []);
   for (const file of files) {
-    if (form.videos.length >= 3) {
-      notice.value = "最多只能上传 3 个视频。";
+    if (form.videos.length >= VIDEO_MAX_COUNT) {
+      notice.value = "视频最多只能上传 3 个。";
       break;
     }
-    if (!file.type.startsWith("video/")) {
-      notice.value = "只能上传视频文件。";
-      continue;
-    }
-    if (file.size > 500 * 1024 * 1024) {
-      notice.value = "单个视频不能超过 500MB。";
+    const error = validateUploadFile(file, "video");
+    if (error) {
+      notice.value = error;
       continue;
     }
     form.videos.push(await addLocalFile(file, "video"));
@@ -1142,12 +1324,10 @@ async function handleVideoUpload(event) {
 async function handleCoverUpload(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type)) {
-    notice.value = "封面必须是 jpg/png/jpeg/webp 图片。";
-    return;
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    notice.value = "封面不能超过 10MB。";
+  const error = validateUploadFile(file, "cover");
+  if (error) {
+    notice.value = error;
+    event.target.value = "";
     return;
   }
   form.cover = await addLocalFile(file, "cover");
@@ -1160,8 +1340,24 @@ function removeMedia(type, index) {
   form[type].splice(index, 1);
 }
 
-function removeMaterial(item) {
+function removeCover() {
+  if (form.cover?.url?.startsWith("blob:")) URL.revokeObjectURL(form.cover.url);
+  form.cover = null;
+}
+
+async function removeMaterial(item) {
+  const isBackendMaterial = Number.isInteger(Number(item.id)) && !item.localOnly;
+  if (isBackendMaterial) {
+    try {
+      await apiRequest(`/api/materials/${item.id}`, { method: "DELETE" });
+    } catch (error) {
+      notice.value = "后端删除失败，已先从当前列表移除。";
+    }
+  }
   materials.value = materials.value.filter((material) => material.id !== item.id && material.url !== item.url);
+  form.images = form.images.filter((material) => material.url !== item.url);
+  form.videos = form.videos.filter((material) => material.url !== item.url);
+  if (form.cover?.url === item.url) form.cover = null;
   localStorage.setItem(`materials:${username.value || "guest"}`, JSON.stringify(materials.value));
 }
 
@@ -1170,6 +1366,14 @@ function addMaterialToCurrentTask(item) {
   if (item.type === "cover") {
     form.cover = item;
   } else if (target && !target.some((existing) => existing.url === item.url)) {
+    if (item.type === "image" && target.length >= IMAGE_MAX_COUNT) {
+      notice.value = "图片最多只能添加 9 张。";
+      return;
+    }
+    if (item.type === "video" && target.length >= VIDEO_MAX_COUNT) {
+      notice.value = "视频最多只能添加 3 个。";
+      return;
+    }
     target.push(item);
   }
   item.usage_count = (item.usage_count || 0) + 1;
@@ -1217,6 +1421,26 @@ function buildLocalPreview() {
   );
 }
 
+function validatePublishBeforeSubmit() {
+  if (!form.title.trim()) return "发布前请先填写标题。";
+  if (!form.content.trim()) return "发布前请先填写正文。";
+  if (!form.platforms.length) return "发布前请至少选择一个目标平台。";
+  if (!previewList.value.length) return "请先生成各平台预览内容。";
+
+  for (const platform of selectedPlatforms.value) {
+    const content = adapted[platform.id];
+    if (!content) return `${platform.name} 缺少待发布内容。`;
+    if (!String(content.title || "").trim()) return `${platform.name} 缺少标题。`;
+    const body = platform.id === "bilibili" ? content.description || content.content : content.content;
+    if (!String(body || "").trim()) return `${platform.name} 缺少正文内容。`;
+    if (platform.id === "bilibili") {
+      const video = content.video || content.videos?.[0] || form.videos[0]?.url;
+      if (!video) return "B站模拟发布需要至少上传 1 个视频素材。";
+    }
+  }
+  return "";
+}
+
 async function generateContent() {
   notice.value = "";
   if (!form.title.trim()) {
@@ -1254,7 +1478,11 @@ async function generateContent() {
     });
     taskId.value = response?.task_id || Date.now();
     Object.assign(adapted, response?.code === 200 && response.data ? response.data : buildLocalPreview());
-    if (response?.code !== 200) notice.value = "后端未返回有效结果，已使用本地规则生成预览。";
+    if (response?.code === 200) {
+      addNotification("success", "AI生成成功", `已生成 ${Object.keys(adapted).length} 个平台内容。`);
+    } else {
+      notice.value = "后端未返回有效结果，已使用本地规则生成预览。";
+    }
   } catch (error) {
     taskId.value = Date.now();
     Object.assign(adapted, buildLocalPreview());
@@ -1289,8 +1517,9 @@ function logoutPlatform(platformId) {
 
 async function publishAll() {
   notice.value = "";
-  if (!previewList.value.length) {
-    notice.value = "请先生成各平台预览内容。";
+  const validationError = validatePublishBeforeSubmit();
+  if (validationError) {
+    notice.value = validationError;
     return;
   }
   loading.publish = true;
@@ -1304,29 +1533,32 @@ async function publishAll() {
         publish_mode: form.publishMode
       })
     });
-    publishResults.value = response?.code === 200 ? response.data || [] : [];
+    if (response?.code !== 200) {
+      throw new Error(response?.message || "模拟发布失败");
+    }
+    publishResults.value = response.data || [];
   } catch (error) {
     publishResults.value = selectedPlatforms.value.map((platform, index) => ({
       id: `${Date.now()}-${index}`,
       title: form.title,
       platform: platform.id,
-      status: "success",
+      status: "failed",
+      message: error?.message || "模拟发布失败",
       publish_time: new Date().toLocaleString(),
       detail: buildLocalRecordDetail()
     }));
+    notice.value = error?.message || "模拟发布失败，请检查后端服务。";
   } finally {
-    if (!publishResults.value.length) {
-      publishResults.value = selectedPlatforms.value.map((platform, index) => ({
-        id: `${Date.now()}-${index}`,
-        title: adapted[platform.id]?.title || form.title,
-        platform: platform.id,
-        status: "success",
-        publish_time: new Date().toLocaleString(),
-        detail: buildLocalRecordDetail()
-      }));
+    const failedCount = publishResults.value.filter((item) => item.status === "failed").length;
+    const successCount = publishResults.value.length - failedCount;
+    if (successCount > 0) addNotification("success", "模拟发布成功", `${successCount} 个平台已完成模拟发布。`);
+    if (failedCount > 0) addNotification("danger", "发布失败", `${failedCount} 个平台发布失败，请查看发布记录。`);
+    if (successCount > 0) {
+      await loadRecords();
+    } else {
+      history.value = [...publishResults.value, ...history.value].slice(0, 30);
+      localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
     }
-    history.value = [...publishResults.value, ...history.value].slice(0, 30);
-    localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
     loading.publish = false;
     router.push("/records");
   }
@@ -1340,6 +1572,7 @@ function buildLocalRecordDetail(record) {
     publish_time: record?.publish_time || new Date().toLocaleString(),
     publish_mode: "mock",
     status: record?.status || "success",
+    mock_publish_id: record?.mock_publish_id || null,
     platform_contents: selectedPlatforms.value.map((platform) => ({
       platform: platform.id,
       ...(adapted[platform.id] || {}),
@@ -1420,11 +1653,11 @@ async function loadMaterials() {
   try {
     const response = await apiRequest("/api/materials");
     if (response?.code === 200) {
-      const localItems = JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]");
-      materials.value = [...response.data, ...localItems.filter((item) => item.localOnly)];
+      const localItems = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
+      materials.value = sanitizeMaterials([...response.data, ...localItems.filter((item) => item.localOnly)]);
     }
   } catch (error) {
-    materials.value = JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]");
+    materials.value = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
   } finally {
     loading.materials = false;
   }
@@ -1493,8 +1726,12 @@ async function testProvider(provider = aiSettings.provider) {
       body: JSON.stringify({ provider, settings: aiSettings })
     });
     notice.value = response?.message || `${providerLabel(provider)} 连接测试已完成。`;
+    if (response?.code !== 200) {
+      addNotification("danger", "模型连接失败", `${providerLabel(provider)} 连接测试失败，请检查 API Key、Base URL 和模型名。`);
+    }
   } catch (error) {
     notice.value = `${providerLabel(provider)} 连接测试失败，请检查配置。`;
+    addNotification("danger", "模型连接失败", `${providerLabel(provider)} 连接测试失败，请检查 API Key、Base URL 和模型名。`);
   } finally {
     testingProvider.value = "";
   }
@@ -1505,6 +1742,10 @@ function testModelConnection() {
 }
 
 onMounted(() => {
+  applyTheme();
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (themeMode.value === "system") applyTheme("system");
+  });
   if (!isAuthPage.value) {
     loadRecords();
     loadMaterials();
@@ -1527,12 +1768,33 @@ onMounted(() => {
   --line: #e9edf5;
   --panel: #ffffff;
   --page: #f6f8fc;
+  --bg: #f6f8fc;
+  --surface: #ffffff;
   --shadow: 0 12px 34px rgba(25, 34, 61, 0.07);
   --sidebar: 260px;
   --topbar: 74px;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --accent: #ff8a5c;
+  --accent-soft: #3b241d;
+  --blue: #78a8ff;
+  --red: #ff7385;
+  --green: #45d084;
+  --purple: #9b86ff;
+  --ink: #eef3ff;
+  --muted: #9da8bd;
+  --line: #2b3548;
+  --panel: #151c2b;
+  --page: #0d1320;
+  --bg: #0d1320;
+  --surface: #151c2b;
+  --shadow: 0 14px 40px rgba(0, 0, 0, 0.34);
+}
+
 * { box-sizing: border-box; }
+html, body, #app { min-height: 100%; background: var(--page); }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--page); color: var(--ink); font-family: "Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -1548,7 +1810,7 @@ a { color: inherit; text-decoration: none; }
 .error-text { margin: 0; color: #c63f2d; font-weight: 800; }
 .auth-link { text-align: center; color: var(--blue); font-weight: 800; }
 
-.app-shell { min-height: 100vh; padding: var(--topbar) 0 0 var(--sidebar); }
+.app-shell { min-height: 100vh; padding: var(--topbar) 0 0 var(--sidebar); background: var(--page); }
 .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 10; width: var(--sidebar); display: flex; flex-direction: column; gap: 22px; padding: 22px; background: #fff; border-right: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 12px; min-height: 50px; }
 .brand-logo { width: 54px; height: 54px; object-fit: contain; }
@@ -1583,12 +1845,153 @@ a { color: inherit; text-decoration: none; }
 .top-actions, .profile { display: flex; align-items: center; gap: 14px; }
 .icon-btn { width: 38px; height: 38px; border: 0; border-radius: 50%; background: transparent; color: #4f5972; font-size: 22px; }
 .bell svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.notification-wrap { position: relative; }
+.bell { position: relative; display: grid; place-items: center; }
+.bell b { position: absolute; top: -4px; right: -3px; min-width: 18px; height: 18px; display: grid; place-items: center; padding: 0 5px; border: 2px solid #fff; border-radius: 99px; background: #ff4f6d; color: #fff; font-size: 10px; line-height: 1; }
+.notification-panel { position: absolute; top: 50px; right: 0; z-index: 40; width: min(380px, calc(100vw - 32px)); display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 20px 60px rgba(18, 27, 47, 0.16); }
+.notification-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.notification-head strong { font-size: 15px; }
+.notification-head button, .notification-item button { border: 0; background: transparent; color: var(--blue); font-size: 12px; font-weight: 900; }
+.notification-list { display: grid; gap: 8px; max-height: 360px; overflow: auto; }
+.notification-item { display: flex; justify-content: space-between; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.notification-item.unread { border-color: #b9cdfa; background: #f5f8ff; }
+.notification-item.success { border-left: 4px solid var(--green); }
+.notification-item.danger { border-left: 4px solid #e5485d; }
+.notification-item strong, .notification-item p, .notification-item small { display: block; margin: 0; }
+.notification-item p { margin-top: 5px; color: #596276; font-size: 13px; line-height: 1.5; }
+.notification-item small { margin-top: 6px; color: #8a94a8; font-size: 12px; }
+.notification-empty { padding: 22px; border: 1px dashed #d8deea; border-radius: 8px; background: #fbfcff; color: #7b8498; text-align: center; font-weight: 800; }
 .profile { padding-left: 18px; border-left: 1px solid var(--line); }
 .avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(135deg, #f8b28d, #5a87c8); color: #fff; font-weight: 900; }
 .profile strong, .profile span { display: block; }
 .profile strong { font-size: 14px; }
 .profile div span { width: max-content; margin-top: 3px; padding: 2px 8px; border-radius: 99px; background: #fff2cc; color: #b88910; font-size: 11px; font-weight: 800; }
 .logout-btn { border: 0; background: transparent; color: #7a849a; font-weight: 800; }
+
+.theme-wrap { position: relative; }
+.theme-menu { position: absolute; top: 50px; right: 0; z-index: 40; width: 160px; display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 20px 60px rgba(18, 27, 47, 0.16); }
+.theme-menu button { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font-weight: 800; text-align: left; }
+.theme-menu button:hover, .theme-menu button.active { background: var(--accent-soft); color: var(--accent); }
+.theme-menu span { width: 18px; text-align: center; }
+
+:root[data-theme="dark"] .auth-card,
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .metric-card,
+:root[data-theme="dark"] .publish-overview-card,
+:root[data-theme="dark"] .profile,
+:root[data-theme="dark"] .notification-panel,
+:root[data-theme="dark"] .upgrade-dialog,
+:root[data-theme="dark"] .delete-dialog,
+:root[data-theme="dark"] .ai-config-dialog,
+:root[data-theme="dark"] .record-drawer,
+:root[data-theme="dark"] .preview-card,
+:root[data-theme="dark"] .account-card,
+:root[data-theme="dark"] .material-card,
+:root[data-theme="dark"] .media-card,
+:root[data-theme="dark"] .ai-provider-card,
+:root[data-theme="dark"] .platform-card,
+:root[data-theme="dark"] .record-row,
+:root[data-theme="dark"] .detail-card {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+}
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] #app,
+:root[data-theme="dark"] .app-shell,
+:root[data-theme="dark"] .workspace {
+  background: var(--page);
+}
+:root[data-theme="dark"] .topbar { background: rgba(21, 28, 43, 0.96); }
+:root[data-theme="dark"] .upgrade-card { background: linear-gradient(145deg, #211f36, #241b2f); color: #d7ccff; }
+:root[data-theme="dark"] .upgrade-card.pro { background: #102b21; color: #73e4aa; }
+:root[data-theme="dark"] .icon-btn,
+:root[data-theme="dark"] .ghost-btn,
+:root[data-theme="dark"] .primary-outline,
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  background: #101827;
+  border-color: var(--line);
+  color: var(--ink);
+}
+:root[data-theme="dark"] .empty-state,
+:root[data-theme="dark"] .notification-empty,
+:root[data-theme="dark"] .notification-item,
+:root[data-theme="dark"] .notification-item.unread,
+:root[data-theme="dark"] .media-hint-list,
+:root[data-theme="dark"] .material-preview,
+:root[data-theme="dark"] .material-preview.cover,
+:root[data-theme="dark"] .ai-provider-meta,
+:root[data-theme="dark"] .delete-record-preview,
+:root[data-theme="dark"] .source-text,
+:root[data-theme="dark"] .input-wrap,
+:root[data-theme="dark"] .tag-editor,
+:root[data-theme="dark"] .rich-editor,
+:root[data-theme="dark"] .more-platforms button,
+:root[data-theme="dark"] .pay-grid div,
+:root[data-theme="dark"] .thumb,
+:root[data-theme="dark"] .add-thumb,
+:root[data-theme="dark"] .cover-preview {
+  background: #101827;
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .field > span,
+:root[data-theme="dark"] .ai-panel label > span,
+:root[data-theme="dark"] .setting-field span,
+:root[data-theme="dark"] .ai-config-form label,
+:root[data-theme="dark"] .toolbar button,
+:root[data-theme="dark"] .toolbar .rewrite-btn,
+:root[data-theme="dark"] .material-info dd,
+:root[data-theme="dark"] .ai-provider-meta b,
+:root[data-theme="dark"] .profile strong,
+:root[data-theme="dark"] .metric-card strong {
+  color: var(--ink);
+}
+:root[data-theme="dark"] .brand span,
+:root[data-theme="dark"] .nav-item,
+:root[data-theme="dark"] .metric-card span,
+:root[data-theme="dark"] .metric-card small,
+:root[data-theme="dark"] .media-card strong span,
+:root[data-theme="dark"] .media-empty,
+:root[data-theme="dark"] .material-info dt,
+:root[data-theme="dark"] .library-toolbar > span,
+:root[data-theme="dark"] .overview-row,
+:root[data-theme="dark"] .tips-panel ul,
+:root[data-theme="dark"] .help-panel ul,
+:root[data-theme="dark"] .record-row span,
+:root[data-theme="dark"] .record-row small,
+:root[data-theme="dark"] .detail-meta,
+:root[data-theme="dark"] .detail-card p,
+:root[data-theme="dark"] .source-text,
+:root[data-theme="dark"] .notification-item p {
+  color: var(--muted);
+}
+:root[data-theme="dark"] .filter-tabs button,
+:root[data-theme="dark"] .segmented,
+:root[data-theme="dark"] .segmented button.active,
+:root[data-theme="dark"] .preview-tags span,
+:root[data-theme="dark"] .tag-editor span {
+  background: #101827;
+  border-color: var(--line);
+  color: var(--ink);
+}
+:root[data-theme="dark"] .platform-card.selected.wechat,
+:root[data-theme="dark"] .platform-card.selected.zhihu,
+:root[data-theme="dark"] .platform-card.selected.bilibili,
+:root[data-theme="dark"] .platform-card.selected.xiaohongshu {
+  background: #1b2638;
+  border-color: var(--accent);
+}
+:root[data-theme="dark"] .ai-default-card {
+  background: linear-gradient(135deg, #151f33, #201a2d);
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .danger-btn { background: #2a1620; border-color: #6b2d3a; color: #ff95a4; }
+:root[data-theme="dark"] .danger-btn:hover { background: #351a25; }
+:root[data-theme="dark"] .notice { background: #2c2115; border-color: #725233; color: #ffd0aa; }
 
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 22px; max-width: 1660px; margin: 0 auto; padding: 22px 28px 34px; }
 .workspace.wide { grid-template-columns: minmax(0, 1fr); }
@@ -1623,24 +2026,30 @@ a { color: inherit; text-decoration: none; }
 .tag-editor button { border: 0; background: transparent; color: #98a1b3; }
 .tag-editor input { flex: 1; min-width: 120px; border: 0; outline: 0; }
 
-.media-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.media-card { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.media-card { min-width: 0; max-width: 100%; padding: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .media-card strong { display: block; margin-bottom: 8px; font-size: 14px; }
 .media-card strong span, .media-hint { color: #7b8498; }
-.media-hint { min-height: 54px; margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
-.media-list { display: flex; gap: 10px; max-width: 100%; overflow-x: auto; padding: 2px 2px 8px; }
+.media-hint-list { min-height: 72px; margin: 0 0 10px; padding: 10px 12px 10px 26px; border: 1px solid #edf1f7; border-radius: 8px; background: #fbfcff; color: #69738a; font-size: 12px; line-height: 1.55; }
+.media-list { display: flex; gap: 10px; width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 2px 2px 8px; overscroll-behavior-inline: contain; }
 .thumb, .add-thumb, .cover-preview { border-radius: 8px; border: 1px solid var(--line); background: #f8fafc; overflow: hidden; }
 .thumb, .add-thumb { position: relative; width: 88px; height: 88px; flex: 0 0 88px; }
 .thumb img, .cover-preview img { width: 100%; height: 100%; object-fit: cover; }
-.image-thumb small { position: absolute; left: 4px; right: 4px; bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 10px; text-shadow: 0 1px 4px #111; }
+.image-thumb small { position: absolute; left: 4px; right: 4px; bottom: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 10px; text-shadow: 0 1px 4px #111; }
+.thumb em { position: absolute; left: 4px; right: 4px; bottom: 4px; overflow: hidden; color: rgba(255, 255, 255, 0.9); font-size: 10px; font-style: normal; text-align: center; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 4px #111; }
 .video-thumb { display: grid; place-items: center; padding: 8px; color: #fff; background: linear-gradient(135deg, #17203a, #31517a); }
 .video-thumb span { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid rgba(255, 255, 255, 0.75); border-radius: 50%; }
 .video-thumb small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 11px; }
 .delete-media { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(24, 33, 58, 0.75); color: #fff; font-weight: 900; }
 .add-thumb { border-style: dashed; color: #48536d; font-size: 28px; }
-.cover-card { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; }
-.cover-card strong, .cover-card .media-hint { grid-column: 1 / -1; }
+.cover-card { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 10px; }
+.cover-preview-wrap { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
 .cover-preview { width: 150px; height: 88px; }
+.cover-preview.empty { display: grid; place-items: center; border-style: dashed; color: #8a94a8; font-size: 12px; font-weight: 800; }
+.media-meta { min-width: 0; }
+.media-meta strong { overflow: hidden; margin: 0 0 6px; text-overflow: ellipsis; white-space: nowrap; }
+.media-meta span, .media-empty { margin: 0; color: #7b8498; font-size: 12px; font-weight: 700; }
+.cover-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .ai-panel { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) minmax(140px, 0.7fr) auto minmax(190px, 0.9fr); align-items: end; gap: 18px; }
 .ai-panel label, .setting-field { display: grid; gap: 8px; }
@@ -1760,11 +2169,20 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .filter-tabs { display: flex; gap: 8px; margin: 18px 0; }
 .filter-tabs button { height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: #5d6680; font-weight: 800; }
 .filter-tabs button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.material-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
-.material-card { display: grid; gap: 9px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
-.material-preview { height: 128px; display: grid; place-items: center; overflow: hidden; border-radius: 8px; background: #edf2f8; color: #50607a; font-weight: 900; }
+.library-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 18px 0; }
+.library-toolbar .filter-tabs { margin: 0; flex-wrap: wrap; }
+.library-toolbar > span { color: #6e788e; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.material-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+.material-card { min-width: 0; display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.material-preview { aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; border-radius: 8px; background: #edf2f8; color: #50607a; font-weight: 900; }
+.material-preview.video { background: linear-gradient(135deg, #17203a, #31517a); color: #fff; }
+.material-preview.cover { background: #fff7fb; }
 .material-preview img { width: 100%; height: 100%; object-fit: cover; }
-.material-card span, .material-card small { color: #6e788e; }
+.material-info { min-width: 0; }
+.material-info > strong { display: block; overflow: hidden; margin-bottom: 10px; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.material-info dl { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 7px 10px; margin: 0; font-size: 13px; }
+.material-info dt { color: #7b8498; font-weight: 800; }
+.material-info dd { min-width: 0; margin: 0; overflow: hidden; color: #3f4a63; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 
 .dialog-mask, .drawer-mask { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(18, 27, 47, 0.42); }
@@ -1816,6 +2234,8 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
   .top-actions { display: none; }
   .workspace { padding: 14px; }
   .media-grid, .side-column, .preview-grid, .platform-grid, .metric-grid, .material-stats, .account-grid, .settings-grid, .ai-provider-grid, .ai-config-form, .detail-platforms, .detail-meta { grid-template-columns: 1fr; }
+  .cover-preview-wrap { grid-template-columns: 1fr; }
+  .cover-preview { width: 100%; max-width: 260px; }
   .ai-default-card { align-items: stretch; flex-direction: column; }
   .ai-panel { grid-template-columns: 1fr; }
   .record-row, .record-row.table, .record-head { grid-template-columns: 1fr; }
