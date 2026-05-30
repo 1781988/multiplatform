@@ -164,6 +164,29 @@
       </section>
     </div>
 
+    <div v-if="deleteDialogVisible" class="dialog-mask" @click.self="cancelDeleteRecord">
+      <section class="delete-dialog">
+        <button class="dialog-close" type="button" :disabled="deletingRecord" @click="cancelDeleteRecord">×</button>
+        <div class="delete-dialog-icon">!</div>
+        <div>
+          <h2>删除发布记录</h2>
+          <p>确认删除这条发布记录吗？当前是模拟发布，只会删除本地系统记录，不会影响真实平台帖子。</p>
+        </div>
+        <div class="delete-record-preview">
+          <span>任务标题</span>
+          <strong>{{ pendingDeleteRecord?.title || form.title || "-" }}</strong>
+          <span>发布平台</span>
+          <strong>{{ platformName(pendingDeleteRecord?.platform || pendingDeleteRecord?.id) }}</strong>
+        </div>
+        <div class="delete-dialog-actions">
+          <button class="ghost-btn" type="button" :disabled="deletingRecord" @click="cancelDeleteRecord">取消</button>
+          <button class="danger-primary-btn" type="button" :disabled="deletingRecord" @click="confirmDeleteRecord">
+            {{ deletingRecord ? "删除中..." : "确认删除" }}
+          </button>
+        </div>
+      </section>
+    </div>
+
     <div v-if="recordDetailVisible" class="drawer-mask" @click.self="recordDetailVisible = false">
       <section class="record-drawer">
         <button class="dialog-close" type="button" @click="recordDetailVisible = false">×</button>
@@ -205,6 +228,9 @@ const coverInput = ref(null);
 const materialFilter = ref("all");
 const recordDetailVisible = ref(false);
 const selectedRecord = ref(null);
+const deleteDialogVisible = ref(false);
+const pendingDeleteRecord = ref(null);
+const deletingRecord = ref(false);
 
 const authForm = reactive({ name: "", account: "", password: "", confirm: "" });
 const authError = ref("");
@@ -699,7 +725,10 @@ function recordRow(record, table = false) {
       h("strong", record.title || form.title),
       h("span", platformName(record.platform || record.id)),
       h("b", record.status === "failed" ? "失败" : "成功"),
-      h("button", { class: "ghost-btn small" }, "查看详情")
+      h("div", { class: "record-actions" }, [
+        h("button", { class: "ghost-btn small", onClick: (event) => { event.stopPropagation(); open(); } }, "查看详情"),
+        h("button", { class: "danger-btn small", onClick: (event) => { event.stopPropagation(); askDeleteRecord(record); } }, "删除")
+      ])
     ]);
   }
   return h("div", { class: "record-row", onClick: open }, [
@@ -1186,6 +1215,49 @@ async function openRecordDetail(record) {
   }
 }
 
+function askDeleteRecord(record) {
+  pendingDeleteRecord.value = record;
+  deleteDialogVisible.value = true;
+}
+
+function cancelDeleteRecord() {
+  if (deletingRecord.value) return;
+  deleteDialogVisible.value = false;
+  pendingDeleteRecord.value = null;
+}
+
+async function confirmDeleteRecord() {
+  const record = pendingDeleteRecord.value;
+  if (!record) return;
+  deletingRecord.value = true;
+
+  const recordId = record.id;
+  const isBackendRecord = Number.isInteger(Number(recordId));
+
+  try {
+    if (isBackendRecord) {
+      try {
+        await apiRequest(`/api/records/${recordId}`, { method: "DELETE" });
+      } catch (error) {
+        // 后端不可用时仍删除本地缓存中的模拟记录。
+      }
+    }
+
+    history.value = history.value.filter((item) => item.id !== recordId);
+    localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
+    if (selectedRecord.value?.id === recordId) {
+      recordDetailVisible.value = false;
+      selectedRecord.value = null;
+    }
+
+    await loadRecords();
+    deleteDialogVisible.value = false;
+    pendingDeleteRecord.value = null;
+  } finally {
+    deletingRecord.value = false;
+  }
+}
+
 async function loadRecords() {
   loading.records = true;
   try {
@@ -1421,11 +1493,39 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .switch span::after { content: ""; display: block; width: 18px; height: 18px; margin: 2px; border-radius: 50%; background: #fff; transition: 0.2s; }
 .switch input:checked + span { background: var(--accent); }
 .switch input:checked + span::after { transform: translateX(18px); }
-.primary-btn, .primary-outline, .ghost-btn { height: 42px; border-radius: 8px; font-weight: 900; }
+.primary-btn, .primary-outline, .ghost-btn, .danger-btn, .danger-primary-btn { height: 42px; border-radius: 8px; font-weight: 900; }
 .primary-btn { border: 0; padding: 0 16px; background: linear-gradient(135deg, #ff4f83, #5e82ff); color: #fff; box-shadow: 0 12px 24px rgba(92, 118, 255, 0.24); }
-.primary-btn:disabled, .primary-outline:disabled { cursor: not-allowed; opacity: 0.58; }
+.primary-btn:disabled, .primary-outline:disabled, .ghost-btn:disabled, .danger-btn:disabled, .danger-primary-btn:disabled { cursor: not-allowed; opacity: 0.58; }
 .primary-outline, .ghost-btn { padding: 0 16px; border: 1px solid var(--line); background: #fff; color: #45506a; }
 .ghost-btn.small { height: 32px; padding: 0 10px; font-size: 12px; }
+.danger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 16px;
+  border: 1px solid #f3c0c8;
+  border-radius: 8px;
+  background: #fff;
+  color: #c93648;
+  font-weight: 900;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+.danger-btn:hover {
+  border-color: #ec8d9b;
+  background: #fff5f6;
+  box-shadow: 0 8px 18px rgba(201, 54, 72, 0.12);
+  transform: translateY(-1px);
+}
+.danger-btn.small { height: 32px; padding: 0 11px; font-size: 12px; }
+.danger-primary-btn {
+  padding: 0 18px;
+  border: 0;
+  background: linear-gradient(135deg, #ff5b72, #d9344c);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(217, 52, 76, 0.22);
+}
 .notice { margin: 0; padding: 12px 14px; border: 1px solid #ffd5c7; border-radius: 8px; background: #fff5f0; color: #b94b26; font-weight: 800; }
 
 .platform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -1468,6 +1568,7 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .record-row.table { grid-template-columns: 180px 1fr 140px 80px 100px; }
 .record-row span, .record-row small { color: #6e788e; }
 .record-row b { color: var(--green); }
+.record-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
 .account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .account-card { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
@@ -1489,6 +1590,15 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .upgrade-dialog h2, .upgrade-dialog p { margin: 0; }
 .upgrade-dialog p { color: var(--muted); }
 .dialog-close { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #f2f4f8; color: #566176; font-size: 22px; }
+.delete-dialog { position: relative; width: min(440px, 100%); display: grid; gap: 16px; padding: 26px; border: 1px solid #f1d8dc; border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
+.delete-dialog-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: #fff1f3; color: #c93648; font-size: 24px; font-weight: 900; }
+.delete-dialog h2 { margin: 0; font-size: 20px; }
+.delete-dialog p { margin: 6px 0 0; color: #667089; line-height: 1.7; }
+.delete-record-preview { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.delete-record-preview span { color: #7b8498; font-size: 13px; font-weight: 800; }
+.delete-record-preview strong { min-width: 0; overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.delete-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.delete-dialog-actions .ghost-btn, .delete-dialog-actions .danger-primary-btn { min-width: 96px; }
 .pay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pay-grid div { display: grid; place-items: center; gap: 8px; min-height: 130px; border: 1px dashed #cfd6e4; border-radius: 8px; background: #fbfcff; color: #53607a; font-weight: 800; }
 .pay-grid b { width: 74px; height: 74px; display: grid; place-items: center; background: repeating-linear-gradient(45deg, #111 0 6px, #fff 6px 12px); color: var(--accent); border: 8px solid #fff; box-shadow: 0 0 0 1px #dfe5ef; }

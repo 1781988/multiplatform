@@ -427,6 +427,18 @@ def get_record_detail(record_id: int) -> dict | None:
     }
 
 
+def delete_record(record_id: int) -> bool:
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute("DELETE FROM publish_record WHERE id = ?", (record_id,))
+    deleted = cursor.rowcount > 0
+
+    connection.commit()
+    connection.close()
+    return deleted
+
+
 def list_materials(limit: int = 200) -> list:
     connection = get_connection()
     cursor = connection.cursor()
