@@ -12,3 +12,8 @@ __pycache__/
 
 # SQLite
 backend/database/app.db
+
+
+*.png
+*.md
+!README.md

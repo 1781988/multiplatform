@@ -95,6 +95,7 @@ def init_db() -> None:
     )
 
     _add_column_if_missing(cursor, "publish_record", "message", "TEXT")
+    _add_column_if_missing(cursor, "publish_record", "mock_publish_id", "TEXT")
 
     cursor.execute(
         """
@@ -184,21 +185,24 @@ def create_publish_record(
     status: str,
     message: str,
     publish_time: str,
-) -> None:
+    mock_publish_id: str | None = None,
+) -> int:
     connection = get_connection()
     cursor = connection.cursor()
 
     cursor.execute(
         """
         INSERT INTO publish_record (
-            task_id, platform, final_title, final_content, status, message, publish_time
+            task_id, platform, final_title, final_content, status, message, publish_time, mock_publish_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (task_id, platform, final_title, final_content, status, message, publish_time),
+        (task_id, platform, final_title, final_content, status, message, publish_time, mock_publish_id),
     )
     connection.commit()
+    record_id = cursor.lastrowid
     connection.close()
+    return int(record_id)
 
 
 def create_media_file(
@@ -313,7 +317,7 @@ def list_records(limit: int = 50) -> list:
 
     cursor.execute(
         """
-        SELECT id, platform, final_title, status, message, publish_time
+        SELECT id, platform, final_title, status, message, publish_time, mock_publish_id
         FROM publish_record
         ORDER BY publish_time DESC
         LIMIT ?
@@ -334,6 +338,7 @@ def list_records(limit: int = 50) -> list:
                 "status": row["status"],
                 "message": row["message"],
                 "publish_time": row["publish_time"],
+                "mock_publish_id": row["mock_publish_id"],
             }
         )
 
@@ -354,6 +359,7 @@ def get_record_detail(record_id: int) -> dict | None:
             r.final_content,
             r.status,
             r.message,
+            r.mock_publish_id,
             r.publish_time,
             t.title AS task_title,
             t.content AS source_content,
@@ -422,9 +428,22 @@ def get_record_detail(record_id: int) -> dict | None:
         "publish_mode": "mock",
         "status": row["status"],
         "message": row["message"],
+        "mock_publish_id": row["mock_publish_id"],
         "platforms": json.loads(row["task_platforms"]) if row["task_platforms"] else [row["platform"]],
         "platform_contents": platform_contents,
     }
+
+
+def delete_record(record_id: int) -> bool:
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute("DELETE FROM publish_record WHERE id = ?", (record_id,))
+    deleted = cursor.rowcount > 0
+
+    connection.commit()
+    connection.close()
+    return deleted
 
 
 def list_materials(limit: int = 200) -> list:
@@ -450,12 +469,35 @@ def list_materials(limit: int = 200) -> list:
             "name": row["file_name"],
             "url": row["file_url"],
             "type": row["file_type"],
+            "format": os.path.splitext(row["file_name"] or "")[1].lstrip(".").lower(),
             "size": row["file_size"] or 0,
             "created_at": row["created_at"],
             "usage_count": 1 if row["task_id"] else 0,
         }
         for row in rows
     ]
+
+
+def delete_material(material_id: int) -> dict | None:
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT id, file_name, file_url, file_type
+        FROM media_file
+        WHERE id = ?
+        """,
+        (material_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        connection.close()
+        return None
+
+    cursor.execute("DELETE FROM media_file WHERE id = ?", (material_id,))
+    connection.commit()
+    connection.close()
+    return dict(row)
 
 
 def create_user(username: str, account: str, password: str, token: str) -> dict:
