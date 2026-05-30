@@ -462,12 +462,35 @@ def list_materials(limit: int = 200) -> list:
             "name": row["file_name"],
             "url": row["file_url"],
             "type": row["file_type"],
+            "format": os.path.splitext(row["file_name"] or "")[1].lstrip(".").lower(),
             "size": row["file_size"] or 0,
             "created_at": row["created_at"],
             "usage_count": 1 if row["task_id"] else 0,
         }
         for row in rows
     ]
+
+
+def delete_material(material_id: int) -> dict | None:
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT id, file_name, file_url, file_type
+        FROM media_file
+        WHERE id = ?
+        """,
+        (material_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        connection.close()
+        return None
+
+    cursor.execute("DELETE FROM media_file WHERE id = ?", (material_id,))
+    connection.commit()
+    connection.close()
+    return dict(row)
 
 
 def create_user(username: str, account: str, password: str, token: str) -> dict:

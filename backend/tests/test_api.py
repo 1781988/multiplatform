@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from database.db import init_db
+from database.db import create_media_file, init_db
 from main import app
 
 
@@ -55,6 +55,18 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertIn("openai", data)
+
+    def test_materials_list_and_delete(self) -> None:
+        create_media_file(None, "library-test.jpg", "/uploads/images/library-test.jpg", "image", 1024)
+        list_response = self.client.get("/api/materials")
+        self.assertEqual(list_response.status_code, 200)
+        materials = list_response.json()["data"]
+        item = next(material for material in materials if material["name"] == "library-test.jpg")
+        self.assertEqual(item["format"], "jpg")
+
+        delete_response = self.client.delete(f"/api/materials/{item['id']}")
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(delete_response.json()["code"], 200)
 
     def test_ai_settings_default_provider_fallback_generation(self) -> None:
         settings_payload = {

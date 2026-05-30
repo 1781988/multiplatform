@@ -302,9 +302,8 @@ const taskId = ref(null);
 const loading = reactive({ adapt: false, publish: false, records: false, materials: false, settings: false });
 const publishResults = ref([]);
 const adapted = reactive({});
-const materials = ref(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
+const materials = ref(sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]")));
 const history = ref(JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]"));
-const coverPlaceholder = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=900&q=80";
 const IMAGE_MAX_COUNT = 9;
 const VIDEO_MAX_COUNT = 3;
 const COVER_MAX_COUNT = 1;
@@ -569,10 +568,10 @@ const AccountsView = page(() => [
 ]);
 
 const MaterialsView = page(() => [
-  h("article", { class: "panel" }, [
+  h("article", { class: "panel material-library" }, [
     h("div", { class: "panel-head" }, [
-      h("div", [h("h2", "全局素材库"), h("p", "管理历史上传素材，可筛选、删除、复制链接或加入当前创作。")]),
-      h("button", { class: "ghost-btn", onClick: loadMaterials }, "刷新素材")
+      h("div", [h("h2", "全局素材库"), h("p", "集中管理历史上传的图片、视频和封面素材，可筛选、删除并加入当前创作任务。")]),
+      h("button", { class: "ghost-btn", disabled: loading.materials, onClick: loadMaterials }, loading.materials ? "刷新中..." : "刷新素材")
     ]),
     h("div", { class: "material-stats" }, [
       metric("图片", `${materialStats.value.image} 张`, "jpg/png/webp"),
@@ -580,12 +579,15 @@ const MaterialsView = page(() => [
       metric("封面", `${materialStats.value.cover} 张`, "推荐 16:9 或 3:4"),
       metric("总占用", materialStats.value.size, "本地/后端素材")
     ]),
-    h("div", { class: "filter-tabs" }, ["all", "image", "video", "cover"].map((type) =>
-      h("button", { class: { active: materialFilter.value === type }, onClick: () => (materialFilter.value = type) }, materialFilterLabel(type))
-    )),
+    h("div", { class: "library-toolbar" }, [
+      h("div", { class: "filter-tabs" }, ["all", "image", "video", "cover"].map((type) =>
+        h("button", { class: { active: materialFilter.value === type }, onClick: () => (materialFilter.value = type) }, `${materialFilterLabel(type)} ${materialFilterCount(type)}`)
+      )),
+      h("span", `${filteredMaterials.value.length} 个素材`)
+    ]),
     filteredMaterials.value.length
       ? h("div", { class: "material-grid" }, filteredMaterials.value.map((item) => materialCard(item)))
-      : h("div", { class: "empty-state" }, "暂无素材，请在内容创作页上传图片、视频或封面。")
+      : h("div", { class: "empty-state" }, "暂无匹配素材，请在内容创作页上传图片、视频或封面。")
   ])
 ]);
 
@@ -742,7 +744,7 @@ function mediaUploadGrid() {
       h("strong", ["封面图", h("span", ` (${form.cover ? COVER_MAX_COUNT : 0}/${COVER_MAX_COUNT})`)]),
       h("ul", { class: "media-hint-list" }, coverHints.map((hint) => h("li", hint))),
       h("div", { class: "cover-preview-wrap" }, [
-        h("div", { class: "cover-preview" }, h("img", { src: form.cover?.url || coverPlaceholder, alt: "封面图" })),
+        h("div", { class: ["cover-preview", { empty: !form.cover }] }, form.cover ? h("img", { src: form.cover.url, alt: "封面图" }) : h("span", "未上传")),
         form.cover ? h("div", { class: "media-meta" }, [
           h("strong", form.cover.name || "封面图"),
           h("span", formatSize(form.cover.size))
@@ -818,14 +820,20 @@ function recordRow(record, table = false) {
 
 function materialCard(item) {
   return h("section", { class: "material-card" }, [
-    h("div", { class: "material-preview" }, item.type === "video" ? h("span", "视频") : h("img", { src: item.url, alt: item.name })),
-    h("strong", item.name),
-    h("span", `${materialFilterLabel(item.type)} · ${formatSize(item.size)}`),
-    h("small", `上传时间：${item.created_at || "本地预览"} · 使用 ${item.usage_count || 0} 次`),
+    h("div", { class: ["material-preview", item.type] }, item.type === "video" ? h("span", "视频") : h("img", { src: item.url, alt: item.name })),
+    h("div", { class: "material-info" }, [
+      h("strong", item.name || "未命名素材"),
+      h("dl", [
+        h("dt", "类型"), h("dd", materialFilterLabel(item.type)),
+        h("dt", "大小"), h("dd", formatSize(item.size)),
+        h("dt", "格式"), h("dd", materialFormat(item)),
+        h("dt", "上传时间"), h("dd", formatMaterialTime(item.created_at)),
+      ])
+    ]),
     h("div", { class: "card-actions" }, [
-      h("button", { class: "ghost-btn small", onClick: () => copyText(item.url) }, "复制链接"),
       h("button", { class: "ghost-btn small", onClick: () => addMaterialToCurrentTask(item) }, "加入创作"),
-      h("button", { class: "ghost-btn small", onClick: () => removeMaterial(item) }, "删除")
+      h("button", { class: "ghost-btn small", onClick: () => copyText(item.url) }, "复制链接"),
+      h("button", { class: "danger-btn small", onClick: () => removeMaterial(item) }, "删除")
     ])
   ]);
 }
@@ -923,7 +931,7 @@ function applyLogin(data) {
 
 async function afterAuth() {
   history.value = JSON.parse(localStorage.getItem(`records:${username.value}`) || "[]");
-  materials.value = JSON.parse(localStorage.getItem(`materials:${username.value}`) || "[]");
+  materials.value = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value}`) || "[]"));
   await Promise.all([loadRecords(), loadMaterials(), loadAiSettings(), loadAccounts()]);
   router.push("/dashboard");
 }
@@ -1080,6 +1088,36 @@ function formatSize(size = 0) {
   return `${size || 0}B`;
 }
 
+function isLegacySampleMaterial(item) {
+  const sampleUrls = ["/uploads/images/cover.jpg", "/uploads/videos/demo.mp4", "/uploads/covers/cover.jpg"];
+  return sampleUrls.includes(item?.url) && !(item?.size > 0);
+}
+
+function sanitizeMaterials(list = []) {
+  return list.filter((item) => !isLegacySampleMaterial(item));
+}
+
+function materialFilterCount(type) {
+  if (type === "all") return materials.value.length;
+  return materials.value.filter((item) => item.type === type).length;
+}
+
+function materialFormat(item) {
+  const fromApi = item.format || "";
+  if (fromApi) return fromApi.toUpperCase();
+  const name = item.name || item.url || "";
+  const ext = name.includes(".") ? name.split(".").pop() : "";
+  return ext ? ext.toUpperCase() : "-";
+}
+
+function formatMaterialTime(value) {
+  if (!value) return "本地预览";
+  const date = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function fileExt(file) {
   const name = file?.name || "";
   const index = name.lastIndexOf(".");
@@ -1205,8 +1243,19 @@ function removeCover() {
   form.cover = null;
 }
 
-function removeMaterial(item) {
+async function removeMaterial(item) {
+  const isBackendMaterial = Number.isInteger(Number(item.id)) && !item.localOnly;
+  if (isBackendMaterial) {
+    try {
+      await apiRequest(`/api/materials/${item.id}`, { method: "DELETE" });
+    } catch (error) {
+      notice.value = "后端删除失败，已先从当前列表移除。";
+    }
+  }
   materials.value = materials.value.filter((material) => material.id !== item.id && material.url !== item.url);
+  form.images = form.images.filter((material) => material.url !== item.url);
+  form.videos = form.videos.filter((material) => material.url !== item.url);
+  if (form.cover?.url === item.url) form.cover = null;
   localStorage.setItem(`materials:${username.value || "guest"}`, JSON.stringify(materials.value));
 }
 
@@ -1473,11 +1522,11 @@ async function loadMaterials() {
   try {
     const response = await apiRequest("/api/materials");
     if (response?.code === 200) {
-      const localItems = JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]");
-      materials.value = [...response.data, ...localItems.filter((item) => item.localOnly)];
+      const localItems = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
+      materials.value = sanitizeMaterials([...response.data, ...localItems.filter((item) => item.localOnly)]);
     }
   } catch (error) {
-    materials.value = JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]");
+    materials.value = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
   } finally {
     loading.materials = false;
   }
@@ -1695,6 +1744,7 @@ a { color: inherit; text-decoration: none; }
 .cover-card { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 10px; }
 .cover-preview-wrap { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
 .cover-preview { width: 150px; height: 88px; }
+.cover-preview.empty { display: grid; place-items: center; border-style: dashed; color: #8a94a8; font-size: 12px; font-weight: 800; }
 .media-meta { min-width: 0; }
 .media-meta strong { overflow: hidden; margin: 0 0 6px; text-overflow: ellipsis; white-space: nowrap; }
 .media-meta span, .media-empty { margin: 0; color: #7b8498; font-size: 12px; font-weight: 700; }
@@ -1818,11 +1868,20 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .filter-tabs { display: flex; gap: 8px; margin: 18px 0; }
 .filter-tabs button { height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: #5d6680; font-weight: 800; }
 .filter-tabs button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.material-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
-.material-card { display: grid; gap: 9px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
-.material-preview { height: 128px; display: grid; place-items: center; overflow: hidden; border-radius: 8px; background: #edf2f8; color: #50607a; font-weight: 900; }
+.library-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 18px 0; }
+.library-toolbar .filter-tabs { margin: 0; flex-wrap: wrap; }
+.library-toolbar > span { color: #6e788e; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.material-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+.material-card { min-width: 0; display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.material-preview { aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; border-radius: 8px; background: #edf2f8; color: #50607a; font-weight: 900; }
+.material-preview.video { background: linear-gradient(135deg, #17203a, #31517a); color: #fff; }
+.material-preview.cover { background: #fff7fb; }
 .material-preview img { width: 100%; height: 100%; object-fit: cover; }
-.material-card span, .material-card small { color: #6e788e; }
+.material-info { min-width: 0; }
+.material-info > strong { display: block; overflow: hidden; margin-bottom: 10px; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.material-info dl { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 7px 10px; margin: 0; font-size: 13px; }
+.material-info dt { color: #7b8498; font-weight: 800; }
+.material-info dd { min-width: 0; margin: 0; overflow: hidden; color: #3f4a63; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 
 .dialog-mask, .drawer-mask { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(18, 27, 47, 0.42); }
