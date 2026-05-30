@@ -103,47 +103,13 @@
         </div>
       </div>
       <div class="top-actions">
-        <div class="theme-wrap">
-          <button class="icon-btn" type="button" title="主题" @click="themeMenuOpen = !themeMenuOpen">{{ themeIcon }}</button>
-          <section v-if="themeMenuOpen" class="theme-menu">
-            <button
-              v-for="item in themeOptions"
-              :key="item.value"
-              type="button"
-              :class="{ active: themeMode === item.value }"
-              @click="selectTheme(item.value)"
-            >
-              <span>{{ item.icon }}</span>
-              {{ item.label }}
-            </button>
-          </section>
-        </div>
-        <div class="notification-wrap">
-          <button class="icon-btn bell" type="button" title="通知" aria-label="通知" @click="notificationPanelOpen = !notificationPanelOpen">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-              <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-            </svg>
-            <b v-if="unreadNotifications.length">{{ unreadNotifications.length > 9 ? "9+" : unreadNotifications.length }}</b>
-          </button>
-          <section v-if="notificationPanelOpen" class="notification-panel">
-            <div class="notification-head">
-              <strong>通知中心</strong>
-              <button v-if="unreadNotifications.length" type="button" @click="markAllNotificationsRead">全部已读</button>
-            </div>
-            <div v-if="notifications.length" class="notification-list">
-              <article v-for="item in notifications" :key="item.id" class="notification-item" :class="{ unread: !item.read, [item.type]: true }">
-                <div>
-                  <strong>{{ item.title }}</strong>
-                  <p>{{ item.message }}</p>
-                  <small>{{ item.time }}</small>
-                </div>
-                <button v-if="!item.read" type="button" @click="markNotificationRead(item.id)">已读</button>
-              </article>
-            </div>
-            <div v-else class="notification-empty">暂无新通知</div>
-          </section>
-        </div>
+        <button class="icon-btn" type="button" title="主题">☼</button>
+        <button class="icon-btn bell" type="button" title="通知" aria-label="通知">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+          </svg>
+        </button>
         <div class="profile">
           <div class="avatar">{{ username.slice(0, 1) || "明" }}</div>
           <div>
@@ -198,77 +164,6 @@
       </section>
     </div>
 
-    <div v-if="deleteDialogVisible" class="dialog-mask" @click.self="cancelDeleteRecord">
-      <section class="delete-dialog">
-        <button class="dialog-close" type="button" :disabled="deletingRecord" @click="cancelDeleteRecord">×</button>
-        <div class="delete-dialog-icon">!</div>
-        <div>
-          <h2>删除发布记录</h2>
-          <p>确认删除这条发布记录吗？当前是模拟发布，只会删除本地系统记录，不会影响真实平台帖子。</p>
-        </div>
-        <div class="delete-record-preview">
-          <span>任务标题</span>
-          <strong>{{ pendingDeleteRecord?.title || form.title || "-" }}</strong>
-          <span>发布平台</span>
-          <strong>{{ platformName(pendingDeleteRecord?.platform || pendingDeleteRecord?.id) }}</strong>
-        </div>
-        <div class="delete-dialog-actions">
-          <button class="ghost-btn" type="button" :disabled="deletingRecord" @click="cancelDeleteRecord">取消</button>
-          <button class="danger-primary-btn" type="button" :disabled="deletingRecord" @click="confirmDeleteRecord">
-            {{ deletingRecord ? "删除中..." : "确认删除" }}
-          </button>
-        </div>
-      </section>
-    </div>
-
-    <div v-if="aiConfigDialogVisible" class="dialog-mask" @click.self="closeAiConfigDialog">
-      <section class="ai-config-dialog">
-        <button class="dialog-close" type="button" :disabled="loading.settings" @click="closeAiConfigDialog">×</button>
-        <div class="ai-config-title">
-          <span :class="['provider-mark', currentEditingProvider?.tone]">{{ currentEditingProvider?.label?.slice(0, 1) }}</span>
-          <div>
-            <h2>{{ currentEditingProvider?.label }} 配置</h2>
-            <p>{{ currentEditingProvider?.description }}</p>
-          </div>
-        </div>
-        <div class="ai-config-form">
-          <label v-if="currentEditingProvider?.requiresKey">
-            <span>API Key</span>
-            <input v-model.trim="aiConfigDraft.key" type="password" placeholder="请输入 API Key" />
-          </label>
-          <label>
-            <span>Base URL</span>
-            <input v-model.trim="aiConfigDraft.baseUrl" placeholder="例如 https://api.openai.com/v1" />
-          </label>
-          <label>
-            <span>模型名</span>
-            <input v-model.trim="aiConfigDraft.model" placeholder="例如 gpt-4o-mini" />
-          </label>
-          <label>
-            <span>Temperature</span>
-            <input v-model.number="aiConfigDraft.temperature" type="number" min="0" max="2" step="0.1" />
-          </label>
-          <label>
-            <span>Max Tokens</span>
-            <input v-model.number="aiConfigDraft.maxTokens" type="number" min="256" step="256" />
-          </label>
-          <label class="switch set-default-switch">
-            <input v-model="aiConfigDraft.setDefault" type="checkbox" />
-            <span></span>
-            设为默认模型
-          </label>
-        </div>
-        <div class="ai-config-actions">
-          <button class="ghost-btn" type="button" :disabled="loading.settings" @click="testCurrentProvider">
-            {{ testingProvider === editingProvider ? "测试中..." : "测试连接" }}
-          </button>
-          <button class="primary-btn" type="button" :disabled="loading.settings" @click="saveAiProviderConfig">
-            {{ loading.settings ? "保存中..." : "保存配置" }}
-          </button>
-        </div>
-      </section>
-    </div>
-
     <div v-if="recordDetailVisible" class="drawer-mask" @click.self="recordDetailVisible = false">
       <section class="record-drawer">
         <button class="dialog-close" type="button" @click="recordDetailVisible = false">×</button>
@@ -276,7 +171,6 @@
         <div class="detail-meta">
           <span>发布时间：{{ selectedRecord?.publish_time || "-" }}</span>
           <span>发布模式：{{ selectedRecord?.publish_mode || "mock" }}</span>
-          <span>模拟发布ID：{{ selectedRecord?.mock_publish_id || "-" }}</span>
           <span>状态：{{ selectedRecord?.status || "success" }}</span>
           <span>平台数：{{ selectedRecord?.platform_contents?.length || 0 }}</span>
         </div>
@@ -311,13 +205,6 @@ const coverInput = ref(null);
 const materialFilter = ref("all");
 const recordDetailVisible = ref(false);
 const selectedRecord = ref(null);
-const deleteDialogVisible = ref(false);
-const pendingDeleteRecord = ref(null);
-const deletingRecord = ref(false);
-const aiConfigDialogVisible = ref(false);
-const editingProvider = ref(null);
-const aiConfigDraft = reactive({});
-const testingProvider = ref("");
 
 const authForm = reactive({ name: "", account: "", password: "", confirm: "" });
 const authError = ref("");
@@ -337,52 +224,25 @@ const taskId = ref(null);
 const loading = reactive({ adapt: false, publish: false, records: false, materials: false, settings: false });
 const publishResults = ref([]);
 const adapted = reactive({});
-const materials = ref(sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]")));
+const materials = ref(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
 const history = ref(JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]"));
-const notifications = ref(JSON.parse(localStorage.getItem(`notifications:${username.value || "guest"}`) || "[]"));
-const notificationPanelOpen = ref(false);
-const themeMode = ref(localStorage.getItem("themeMode") || "light");
-const themeMenuOpen = ref(false);
-const IMAGE_MAX_COUNT = 9;
-const VIDEO_MAX_COUNT = 3;
-const COVER_MAX_COUNT = 1;
-const IMAGE_MAX_SIZE = 10 * 1024 * 1024;
-const VIDEO_MAX_SIZE = 500 * 1024 * 1024;
-const IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
-const VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-msvideo", "video/x-matroska"];
-const VIDEO_EXTS = [".mp4", ".mov", ".avi", ".mkv"];
+const coverPlaceholder = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=900&q=80";
 
 const aiSettings = reactive({
   provider: "openai",
   openaiKey: "",
   openaiBaseUrl: "https://api.openai.com/v1",
   openaiModel: "gpt-4o-mini",
-  openaiTemperature: 0.7,
-  openaiMaxTokens: 2000,
   qwenKey: "",
   qwenBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   qwenModel: "qwen-plus",
-  qwenTemperature: 0.7,
-  qwenMaxTokens: 2000,
   geminiKey: "",
-  geminiBaseUrl: "",
   geminiModel: "gemini-1.5-flash",
-  geminiTemperature: 0.7,
-  geminiMaxTokens: 2000,
   deepseekKey: "",
   deepseekBaseUrl: "https://api.deepseek.com",
   deepseekModel: "deepseek-chat",
-  deepseekTemperature: 0.7,
-  deepseekMaxTokens: 2000,
   ollamaBaseUrl: "http://localhost:11434",
   ollamaModel: "qwen2.5:7b",
-  ollamaTemperature: 0.7,
-  ollamaMaxTokens: 2000,
-  localKey: "",
-  localBaseUrl: "http://127.0.0.1:8000/v1",
-  localModel: "local-model",
-  localTemperature: 0.7,
-  localMaxTokens: 2000,
   defaultLang: outputLang.value,
   defaultIntensity: aiIntensity.value
 });
@@ -441,12 +301,12 @@ const morePlatforms = [
 ];
 
 const providers = [
-  { value: "openai", label: "OpenAI", tone: "blue", description: "OpenAI 官方或兼容接口", requiresKey: true },
-  { value: "qwen", label: "Qwen", tone: "green", description: "通义千问 DashScope 兼容接口", requiresKey: true },
-  { value: "gemini", label: "Gemini", tone: "purple", description: "Google Gemini 模型服务", requiresKey: true },
-  { value: "deepseek", label: "DeepSeek", tone: "pink", description: "DeepSeek Chat / Coder 服务", requiresKey: true },
-  { value: "ollama", label: "Ollama", tone: "orange", description: "本机 Ollama 模型服务", requiresKey: false },
-  { value: "local", label: "Local", tone: "gray", description: "私有化 OpenAI 兼容服务", requiresKey: false }
+  { value: "openai", label: "OpenAI (gpt-4o-mini)" },
+  { value: "gemini", label: "Gemini" },
+  { value: "qwen", label: "Qwen" },
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "ollama", label: "Ollama" },
+  { value: "local", label: "Local" }
 ];
 
 const rewriteModes = [
@@ -463,6 +323,7 @@ const publishOverview = computed(() => {
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const day = now.getDay() || 7;
   const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1).getTime();
+
   let today = 0;
   let week = 0;
   let success = 0;
@@ -493,14 +354,7 @@ const parsedTags = computed(() =>
 );
 const selectedPlatforms = computed(() => platforms.filter((platform) => form.platforms.includes(platform.id)));
 const previewList = computed(() => selectedPlatforms.value.map((platform) => ({ ...platform, content: adapted[platform.id] })).filter((item) => item.content));
-const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read));
 const filteredMaterials = computed(() => (materialFilter.value === "all" ? materials.value : materials.value.filter((item) => item.type === materialFilter.value)));
-const themeOptions = [
-  { value: "light", label: "亮色模式", icon: "☼" },
-  { value: "dark", label: "深色模式", icon: "●" },
-  { value: "system", label: "跟随系统", icon: "◐" }
-];
-const themeIcon = computed(() => themeOptions.find((item) => item.value === themeMode.value)?.icon || "☼");
 const materialStats = computed(() => {
   const totalSize = materials.value.reduce((sum, item) => sum + (item.size || 0), 0);
   return {
@@ -614,10 +468,10 @@ const AccountsView = page(() => [
 ]);
 
 const MaterialsView = page(() => [
-  h("article", { class: "panel material-library" }, [
+  h("article", { class: "panel" }, [
     h("div", { class: "panel-head" }, [
-      h("div", [h("h2", "全局素材库"), h("p", "集中管理历史上传的图片、视频和封面素材，可筛选、删除并加入当前创作任务。")]),
-      h("button", { class: "ghost-btn", disabled: loading.materials, onClick: loadMaterials }, loading.materials ? "刷新中..." : "刷新素材")
+      h("div", [h("h2", "全局素材库"), h("p", "管理历史上传素材，可筛选、删除、复制链接或加入当前创作。")]),
+      h("button", { class: "ghost-btn", onClick: loadMaterials }, "刷新素材")
     ]),
     h("div", { class: "material-stats" }, [
       metric("图片", `${materialStats.value.image} 张`, "jpg/png/webp"),
@@ -625,30 +479,40 @@ const MaterialsView = page(() => [
       metric("封面", `${materialStats.value.cover} 张`, "推荐 16:9 或 3:4"),
       metric("总占用", materialStats.value.size, "本地/后端素材")
     ]),
-    h("div", { class: "library-toolbar" }, [
-      h("div", { class: "filter-tabs" }, ["all", "image", "video", "cover"].map((type) =>
-        h("button", { class: { active: materialFilter.value === type }, onClick: () => (materialFilter.value = type) }, `${materialFilterLabel(type)} ${materialFilterCount(type)}`)
-      )),
-      h("span", `${filteredMaterials.value.length} 个素材`)
-    ]),
+    h("div", { class: "filter-tabs" }, ["all", "image", "video", "cover"].map((type) =>
+      h("button", { class: { active: materialFilter.value === type }, onClick: () => (materialFilter.value = type) }, materialFilterLabel(type))
+    )),
     filteredMaterials.value.length
       ? h("div", { class: "material-grid" }, filteredMaterials.value.map((item) => materialCard(item)))
-      : h("div", { class: "empty-state" }, "暂无匹配素材，请在内容创作页上传图片、视频或封面。")
+      : h("div", { class: "empty-state" }, "暂无素材，请在内容创作页上传图片、视频或封面。")
   ])
 ]);
 
 const SettingsView = page(() => [
   h("article", { class: "panel settings-panel" }, [
-    h("div", { class: "panel-head" }, [h("div", [h("h2", "AI 设置中心"), h("p", "管理模型服务、默认模型和后续真实 API 接入参数。")])]),
-    h("section", { class: "ai-default-card" }, [
-      h("div", [
-        h("span", "当前默认模型"),
-        h("h3", `${providerLabel(aiSettings.provider)} · ${providerModel(aiSettings.provider) || "未配置模型"}`),
-        h("p", `默认语言：${aiSettings.defaultLang === "en" ? "English" : "中文"} / 改写强度：${rewriteModeLabel(aiSettings.defaultIntensity)}`)
-      ]),
-      h("button", { class: "primary-outline", onClick: () => openAiConfigDialog(aiSettings.provider) }, "配置默认模型")
+    h("div", { class: "panel-head" }, [h("div", [h("h2", "AI 设置中心"), h("p", "配置全局模型 API Key、Base URL 和默认生成参数。")])]),
+    h("div", { class: "settings-grid" }, [
+      settingSelect("默认模型", "provider", providers),
+      settingInput("OpenAI API Key", "openaiKey", true),
+      settingInput("OpenAI Base URL", "openaiBaseUrl"),
+      settingInput("OpenAI Model", "openaiModel"),
+      settingInput("Qwen API Key", "qwenKey", true),
+      settingInput("Qwen Base URL", "qwenBaseUrl"),
+      settingInput("Qwen Model", "qwenModel"),
+      settingInput("Gemini API Key", "geminiKey", true),
+      settingInput("Gemini Model", "geminiModel"),
+      settingInput("DeepSeek API Key", "deepseekKey", true),
+      settingInput("DeepSeek Base URL", "deepseekBaseUrl"),
+      settingInput("DeepSeek Model", "deepseekModel"),
+      settingInput("Ollama Base URL", "ollamaBaseUrl"),
+      settingInput("Ollama Model", "ollamaModel"),
+      settingSelect("默认语言", "defaultLang", [{ value: "zh", label: "中文" }, { value: "en", label: "English" }]),
+      settingSelect("默认改写强度", "defaultIntensity", rewriteModes)
     ]),
-    h("div", { class: "ai-provider-grid" }, providers.map((provider) => aiProviderCard(provider))),
+    h("div", { class: "settings-actions" }, [
+      h("button", { class: "ghost-btn", onClick: testModelConnection }, "测试连接"),
+      h("button", { class: "primary-btn", onClick: saveAiSettings }, "保存设置")
+    ]),
     notice.value ? h("p", { class: "notice" }, notice.value) : null
   ])
 ]);
@@ -780,45 +644,31 @@ function hiddenInputs() {
 }
 
 function mediaUploadGrid() {
-  const imageHints = ["格式：JPG / PNG / WEBP", "大小：单张不超过 10MB，最多 9 张", "推荐：公众号 900x500，知乎 1200x675，小红书 1080x1440"];
-  const videoHints = ["格式：MP4 / MOV / AVI / MKV", "大小：单个不超过 500MB，最多 3 个", "推荐：B站 1920x1080，小红书 1080x1920"];
-  const coverHints = ["格式：JPG / PNG / WEBP", "大小：1 张，不超过 10MB", "推荐：B站 1920x1080，公众号 900x383，小红书 1080x1440"];
   return h("div", { class: "media-grid" }, [
-    uploadCard("图片", `${form.images.length}/${IMAGE_MAX_COUNT}`, imageHints, form.images, "images", () => imageInput.value?.click()),
-    uploadCard("视频", `${form.videos.length}/${VIDEO_MAX_COUNT}`, videoHints, form.videos, "videos", () => videoInput.value?.click()),
+    uploadCard("图片", `${form.images.length}/9`, "支持 jpg/png/webp，单张不超过 10MB，最多 9 张。推荐：公众号 900x500，知乎 1200x675，小红书 1080x1440。", form.images, "images", () => imageInput.value?.click()),
+    uploadCard("视频", `${form.videos.length}/3`, "支持 mp4/mov/avi/mkv，单个不超过 500MB，最多 3 个。推荐：B站 1920x1080，小红书 1080x1920。", form.videos, "videos", () => videoInput.value?.click()),
     h("div", { class: "media-card cover-card" }, [
-      h("strong", ["封面图", h("span", ` (${form.cover ? COVER_MAX_COUNT : 0}/${COVER_MAX_COUNT})`)]),
-      h("ul", { class: "media-hint-list" }, coverHints.map((hint) => h("li", hint))),
-      h("div", { class: "cover-preview-wrap" }, [
-        h("div", { class: ["cover-preview", { empty: !form.cover }] }, form.cover ? h("img", { src: form.cover.url, alt: "封面图" }) : h("span", "未上传")),
-        form.cover ? h("div", { class: "media-meta" }, [
-          h("strong", form.cover.name || "封面图"),
-          h("span", formatSize(form.cover.size))
-        ]) : h("p", { class: "media-empty" }, "尚未上传封面")
-      ]),
-      h("div", { class: "cover-actions" }, [
-        h("button", { class: "ghost-btn small", onClick: () => coverInput.value?.click() }, form.cover ? "更换封面" : "上传封面"),
-        form.cover ? h("button", { class: "danger-btn small", onClick: removeCover }, "删除") : null
-      ])
+      h("strong", "封面图"),
+      h("p", { class: "media-hint" }, "支持 jpg/png/webp，不超过 10MB。推荐：B站 1920x1080，公众号 900x383，小红书 1080x1440。"),
+      h("div", { class: "cover-preview" }, h("img", { src: form.cover?.url || coverPlaceholder, alt: "封面图" })),
+      h("button", { class: "ghost-btn small", onClick: () => coverInput.value?.click() }, "更换封面")
     ])
   ]);
 }
 
 function uploadCard(title, count, hint, list, type, onAdd) {
-  const maxCount = type === "videos" ? VIDEO_MAX_COUNT : IMAGE_MAX_COUNT;
   return h("div", { class: "media-card" }, [
     h("strong", [title, h("span", ` (${count})`)]),
-    h("ul", { class: "media-hint-list" }, hint.map((item) => h("li", item))),
+    h("p", { class: "media-hint" }, hint),
     h("div", { class: "media-list" }, [
       ...list.map((item, index) =>
         h("div", { class: ["thumb", type === "videos" ? "video-thumb" : "image-thumb"] }, [
           type === "videos" ? h("span", "▷") : h("img", { src: item.url, alt: item.name }),
           h("small", item.name),
-          h("em", formatSize(item.size)),
-          h("button", { class: "delete-media", title: "删除素材", onClick: () => removeMedia(type, index) }, "×")
+          h("button", { class: "delete-media", onClick: () => removeMedia(type, index) }, "×")
         ])
       ),
-      list.length < maxCount ? h("button", { class: "add-thumb", onClick: onAdd }, "+") : null
+      list.length < (type === "videos" ? 3 : 9) ? h("button", { class: "add-thumb", onClick: onAdd }, "+") : null
     ])
   ]);
 }
@@ -850,10 +700,7 @@ function recordRow(record, table = false) {
       h("strong", record.title || form.title),
       h("span", platformName(record.platform || record.id)),
       h("b", record.status === "failed" ? "失败" : "成功"),
-      h("div", { class: "record-actions" }, [
-        h("button", { class: "ghost-btn small", onClick: (event) => { event.stopPropagation(); open(); } }, "查看详情"),
-        h("button", { class: "danger-btn small", onClick: (event) => { event.stopPropagation(); askDeleteRecord(record); } }, "删除")
-      ])
+      h("button", { class: "ghost-btn small" }, "查看详情")
     ]);
   }
   return h("div", { class: "record-row", onClick: open }, [
@@ -866,44 +713,14 @@ function recordRow(record, table = false) {
 
 function materialCard(item) {
   return h("section", { class: "material-card" }, [
-    h("div", { class: ["material-preview", item.type] }, item.type === "video" ? h("span", "视频") : h("img", { src: item.url, alt: item.name })),
-    h("div", { class: "material-info" }, [
-      h("strong", item.name || "未命名素材"),
-      h("dl", [
-        h("dt", "类型"), h("dd", materialFilterLabel(item.type)),
-        h("dt", "大小"), h("dd", formatSize(item.size)),
-        h("dt", "格式"), h("dd", materialFormat(item)),
-        h("dt", "上传时间"), h("dd", formatMaterialTime(item.created_at)),
-      ])
-    ]),
+    h("div", { class: "material-preview" }, item.type === "video" ? h("span", "视频") : h("img", { src: item.url, alt: item.name })),
+    h("strong", item.name),
+    h("span", `${materialFilterLabel(item.type)} · ${formatSize(item.size)}`),
+    h("small", `上传时间：${item.created_at || "本地预览"} · 使用 ${item.usage_count || 0} 次`),
     h("div", { class: "card-actions" }, [
-      h("button", { class: "ghost-btn small", onClick: () => addMaterialToCurrentTask(item) }, "加入创作"),
       h("button", { class: "ghost-btn small", onClick: () => copyText(item.url) }, "复制链接"),
-      h("button", { class: "danger-btn small", onClick: () => removeMaterial(item) }, "删除")
-    ])
-  ]);
-}
-
-function aiProviderCard(provider) {
-  const isDefault = aiSettings.provider === provider.value;
-  const configured = isProviderConfigured(provider.value);
-  return h("section", { class: ["ai-provider-card", provider.tone, { active: isDefault }] }, [
-    h("div", { class: "ai-provider-top" }, [
-      h("span", { class: ["provider-mark", provider.tone] }, provider.label.slice(0, 1)),
-      h("div", [
-        h("h3", provider.label),
-        h("p", provider.description)
-      ])
-    ]),
-    h("div", { class: "ai-provider-meta" }, [
-      h("span", [h("b", "模型"), providerModel(provider.value) || "未配置"]),
-      h("span", [h("b", "状态"), configured ? "已配置" : "待配置"]),
-      h("span", [h("b", "默认"), isDefault ? "是" : "否"])
-    ]),
-    h("div", { class: "card-actions" }, [
-      h("button", { class: "ghost-btn small", onClick: () => openAiConfigDialog(provider.value) }, "配置"),
-      h("button", { class: "ghost-btn small", disabled: testingProvider.value === provider.value, onClick: () => testProvider(provider.value) }, testingProvider.value === provider.value ? "测试中..." : "测试连接"),
-      h("button", { class: isDefault ? "primary-outline small" : "primary-btn small", disabled: isDefault || loading.settings, onClick: () => setDefaultProvider(provider.value) }, isDefault ? "默认模型" : "设为默认")
+      h("button", { class: "ghost-btn small", onClick: () => addMaterialToCurrentTask(item) }, "加入创作"),
+      h("button", { class: "ghost-btn small", onClick: () => removeMaterial(item) }, "删除")
     ])
   ]);
 }
@@ -977,8 +794,7 @@ function applyLogin(data) {
 
 async function afterAuth() {
   history.value = JSON.parse(localStorage.getItem(`records:${username.value}`) || "[]");
-  materials.value = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value}`) || "[]"));
-  notifications.value = JSON.parse(localStorage.getItem(notificationStorageKey()) || "[]");
+  materials.value = JSON.parse(localStorage.getItem(`materials:${username.value}`) || "[]");
   await Promise.all([loadRecords(), loadMaterials(), loadAiSettings(), loadAccounts()]);
   router.push("/dashboard");
 }
@@ -1052,72 +868,6 @@ function providerLabel(id) {
   return providers.find((provider) => provider.value === id)?.label || id;
 }
 
-const currentEditingProvider = computed(() => providers.find((provider) => provider.value === editingProvider.value));
-
-function rewriteModeLabel(value) {
-  return rewriteModes.find((mode) => mode.value === value)?.label || value || "balanced";
-}
-
-function providerKey(provider, field) {
-  return `${provider}${field[0].toUpperCase()}${field.slice(1)}`;
-}
-
-function providerModel(provider) {
-  return aiSettings[providerKey(provider, "model")];
-}
-
-function isProviderConfigured(provider) {
-  const meta = providers.find((item) => item.value === provider);
-  const hasModel = Boolean(aiSettings[providerKey(provider, "model")]);
-  const hasBaseUrl = provider === "gemini" || Boolean(aiSettings[providerKey(provider, "baseUrl")]);
-  const hasKey = !meta?.requiresKey || Boolean(aiSettings[providerKey(provider, "key")]);
-  return hasModel && hasBaseUrl && hasKey;
-}
-
-function openAiConfigDialog(provider) {
-  editingProvider.value = provider;
-  aiConfigDraft.key = aiSettings[providerKey(provider, "key")] || "";
-  aiConfigDraft.baseUrl = aiSettings[providerKey(provider, "baseUrl")] || "";
-  aiConfigDraft.model = aiSettings[providerKey(provider, "model")] || "";
-  aiConfigDraft.temperature = Number(aiSettings[providerKey(provider, "temperature")] ?? 0.7);
-  aiConfigDraft.maxTokens = Number(aiSettings[providerKey(provider, "maxTokens")] ?? 2000);
-  aiConfigDraft.setDefault = aiSettings.provider === provider;
-  aiConfigDialogVisible.value = true;
-}
-
-function closeAiConfigDialog() {
-  if (loading.settings) return;
-  aiConfigDialogVisible.value = false;
-  editingProvider.value = null;
-}
-
-function applyDraftToSettings() {
-  const provider = editingProvider.value;
-  if (!provider) return;
-  aiSettings[providerKey(provider, "key")] = aiConfigDraft.key || "";
-  aiSettings[providerKey(provider, "baseUrl")] = aiConfigDraft.baseUrl || "";
-  aiSettings[providerKey(provider, "model")] = aiConfigDraft.model || "";
-  aiSettings[providerKey(provider, "temperature")] = Number(aiConfigDraft.temperature ?? 0.7);
-  aiSettings[providerKey(provider, "maxTokens")] = Number(aiConfigDraft.maxTokens ?? 2000);
-  if (aiConfigDraft.setDefault) aiSettings.provider = provider;
-}
-
-async function saveAiProviderConfig() {
-  applyDraftToSettings();
-  await saveAiSettings();
-  if (!loading.settings) closeAiConfigDialog();
-}
-
-async function setDefaultProvider(provider) {
-  aiSettings.provider = provider;
-  await saveAiSettings();
-}
-
-async function testCurrentProvider() {
-  applyDraftToSettings();
-  await testProvider(editingProvider.value);
-}
-
 function materialFilterLabel(type) {
   return { all: "全部", image: "图片", video: "视频", cover: "封面" }[type] || type;
 }
@@ -1133,117 +883,6 @@ function formatSize(size = 0) {
   if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)}MB`;
   if (size >= 1024) return `${(size / 1024).toFixed(1)}KB`;
   return `${size || 0}B`;
-}
-
-function isLegacySampleMaterial(item) {
-  const sampleUrls = ["/uploads/images/cover.jpg", "/uploads/videos/demo.mp4", "/uploads/covers/cover.jpg"];
-  return sampleUrls.includes(item?.url) && !(item?.size > 0);
-}
-
-function sanitizeMaterials(list = []) {
-  return list.filter((item) => !isLegacySampleMaterial(item));
-}
-
-function materialFilterCount(type) {
-  if (type === "all") return materials.value.length;
-  return materials.value.filter((item) => item.type === type).length;
-}
-
-function materialFormat(item) {
-  const fromApi = item.format || "";
-  if (fromApi) return fromApi.toUpperCase();
-  const name = item.name || item.url || "";
-  const ext = name.includes(".") ? name.split(".").pop() : "";
-  return ext ? ext.toUpperCase() : "-";
-}
-
-function formatMaterialTime(value) {
-  if (!value) return "本地预览";
-  const date = new Date(String(value).replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return value;
-  const pad = (number) => String(number).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function notificationStorageKey() {
-  return `notifications:${username.value || "guest"}`;
-}
-
-function persistNotifications() {
-  localStorage.setItem(notificationStorageKey(), JSON.stringify(notifications.value));
-}
-
-function addNotification(type, title, message) {
-  notifications.value = [
-    {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      type,
-      title,
-      message,
-      time: new Date().toLocaleString(),
-      read: false
-    },
-    ...notifications.value
-  ].slice(0, 50);
-  persistNotifications();
-}
-
-function markNotificationRead(id) {
-  const item = notifications.value.find((notification) => notification.id === id);
-  if (!item) return;
-  item.read = true;
-  persistNotifications();
-}
-
-function markAllNotificationsRead() {
-  notifications.value.forEach((notification) => {
-    notification.read = true;
-  });
-  persistNotifications();
-}
-
-function resolvedTheme(mode = themeMode.value) {
-  if (mode !== "system") return mode;
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function applyTheme(mode = themeMode.value) {
-  const resolved = resolvedTheme(mode);
-  document.documentElement.dataset.theme = resolved;
-  document.documentElement.dataset.themeMode = mode;
-}
-
-function selectTheme(mode) {
-  themeMode.value = mode;
-  localStorage.setItem("themeMode", mode);
-  applyTheme(mode);
-  themeMenuOpen.value = false;
-}
-
-function fileExt(file) {
-  const name = file?.name || "";
-  const index = name.lastIndexOf(".");
-  return index >= 0 ? name.slice(index).toLowerCase() : "";
-}
-
-function isAllowedVideo(file) {
-  return VIDEO_TYPES.includes(file.type) || VIDEO_EXTS.includes(fileExt(file));
-}
-
-function validateUploadFile(file, type) {
-  if (type === "image") {
-    if (!IMAGE_TYPES.includes(file.type)) return "只能上传 JPG / PNG / WEBP 图片。";
-    if (file.size > IMAGE_MAX_SIZE) return "单张图片不能超过 10MB。";
-  }
-  if (type === "video") {
-    if (!isAllowedVideo(file)) return "只能上传 MP4 / MOV / AVI / MKV 视频。";
-    if (file.size > VIDEO_MAX_SIZE) return "单个视频不能超过 500MB。";
-  }
-  if (type === "cover") {
-    if (!IMAGE_TYPES.includes(file.type)) return "封面必须是 JPG / PNG / WEBP 图片。";
-    if (file.size > IMAGE_MAX_SIZE) return "封面不能超过 10MB。";
-  }
-  return "";
 }
 
 async function uploadFile(file, type) {
@@ -1290,13 +929,16 @@ function upsertMaterial(item) {
 async function handleImageUpload(event) {
   const files = Array.from(event.target.files || []);
   for (const file of files) {
-    if (form.images.length >= IMAGE_MAX_COUNT) {
-      notice.value = "图片最多只能上传 9 张。";
+    if (form.images.length >= 9) {
+      notice.value = "最多只能上传 9 张图片。";
       break;
     }
-    const error = validateUploadFile(file, "image");
-    if (error) {
-      notice.value = error;
+    if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type)) {
+      notice.value = "只能上传 jpg/png/jpeg/webp 图片。";
+      continue;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      notice.value = "单张图片不能超过 10MB。";
       continue;
     }
     form.images.push(await addLocalFile(file, "image"));
@@ -1307,13 +949,16 @@ async function handleImageUpload(event) {
 async function handleVideoUpload(event) {
   const files = Array.from(event.target.files || []);
   for (const file of files) {
-    if (form.videos.length >= VIDEO_MAX_COUNT) {
-      notice.value = "视频最多只能上传 3 个。";
+    if (form.videos.length >= 3) {
+      notice.value = "最多只能上传 3 个视频。";
       break;
     }
-    const error = validateUploadFile(file, "video");
-    if (error) {
-      notice.value = error;
+    if (!file.type.startsWith("video/")) {
+      notice.value = "只能上传视频文件。";
+      continue;
+    }
+    if (file.size > 500 * 1024 * 1024) {
+      notice.value = "单个视频不能超过 500MB。";
       continue;
     }
     form.videos.push(await addLocalFile(file, "video"));
@@ -1324,10 +969,12 @@ async function handleVideoUpload(event) {
 async function handleCoverUpload(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  const error = validateUploadFile(file, "cover");
-  if (error) {
-    notice.value = error;
-    event.target.value = "";
+  if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type)) {
+    notice.value = "封面必须是 jpg/png/jpeg/webp 图片。";
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    notice.value = "封面不能超过 10MB。";
     return;
   }
   form.cover = await addLocalFile(file, "cover");
@@ -1340,24 +987,8 @@ function removeMedia(type, index) {
   form[type].splice(index, 1);
 }
 
-function removeCover() {
-  if (form.cover?.url?.startsWith("blob:")) URL.revokeObjectURL(form.cover.url);
-  form.cover = null;
-}
-
-async function removeMaterial(item) {
-  const isBackendMaterial = Number.isInteger(Number(item.id)) && !item.localOnly;
-  if (isBackendMaterial) {
-    try {
-      await apiRequest(`/api/materials/${item.id}`, { method: "DELETE" });
-    } catch (error) {
-      notice.value = "后端删除失败，已先从当前列表移除。";
-    }
-  }
+function removeMaterial(item) {
   materials.value = materials.value.filter((material) => material.id !== item.id && material.url !== item.url);
-  form.images = form.images.filter((material) => material.url !== item.url);
-  form.videos = form.videos.filter((material) => material.url !== item.url);
-  if (form.cover?.url === item.url) form.cover = null;
   localStorage.setItem(`materials:${username.value || "guest"}`, JSON.stringify(materials.value));
 }
 
@@ -1366,14 +997,6 @@ function addMaterialToCurrentTask(item) {
   if (item.type === "cover") {
     form.cover = item;
   } else if (target && !target.some((existing) => existing.url === item.url)) {
-    if (item.type === "image" && target.length >= IMAGE_MAX_COUNT) {
-      notice.value = "图片最多只能添加 9 张。";
-      return;
-    }
-    if (item.type === "video" && target.length >= VIDEO_MAX_COUNT) {
-      notice.value = "视频最多只能添加 3 个。";
-      return;
-    }
     target.push(item);
   }
   item.usage_count = (item.usage_count || 0) + 1;
@@ -1421,26 +1044,6 @@ function buildLocalPreview() {
   );
 }
 
-function validatePublishBeforeSubmit() {
-  if (!form.title.trim()) return "发布前请先填写标题。";
-  if (!form.content.trim()) return "发布前请先填写正文。";
-  if (!form.platforms.length) return "发布前请至少选择一个目标平台。";
-  if (!previewList.value.length) return "请先生成各平台预览内容。";
-
-  for (const platform of selectedPlatforms.value) {
-    const content = adapted[platform.id];
-    if (!content) return `${platform.name} 缺少待发布内容。`;
-    if (!String(content.title || "").trim()) return `${platform.name} 缺少标题。`;
-    const body = platform.id === "bilibili" ? content.description || content.content : content.content;
-    if (!String(body || "").trim()) return `${platform.name} 缺少正文内容。`;
-    if (platform.id === "bilibili") {
-      const video = content.video || content.videos?.[0] || form.videos[0]?.url;
-      if (!video) return "B站模拟发布需要至少上传 1 个视频素材。";
-    }
-  }
-  return "";
-}
-
 async function generateContent() {
   notice.value = "";
   if (!form.title.trim()) {
@@ -1468,7 +1071,7 @@ async function generateContent() {
         author: username.value || null,
         platforms: form.platforms,
         use_ai: form.useAi,
-        llm_provider: form.useAi ? aiSettings.provider || form.llmProvider : null,
+        llm_provider: form.useAi ? form.llmProvider : null,
         media_files: {
           images: form.images.map((item) => item.url),
           videos: form.videos.map((item) => item.url),
@@ -1478,11 +1081,7 @@ async function generateContent() {
     });
     taskId.value = response?.task_id || Date.now();
     Object.assign(adapted, response?.code === 200 && response.data ? response.data : buildLocalPreview());
-    if (response?.code === 200) {
-      addNotification("success", "AI生成成功", `已生成 ${Object.keys(adapted).length} 个平台内容。`);
-    } else {
-      notice.value = "后端未返回有效结果，已使用本地规则生成预览。";
-    }
+    if (response?.code !== 200) notice.value = "后端未返回有效结果，已使用本地规则生成预览。";
   } catch (error) {
     taskId.value = Date.now();
     Object.assign(adapted, buildLocalPreview());
@@ -1517,9 +1116,8 @@ function logoutPlatform(platformId) {
 
 async function publishAll() {
   notice.value = "";
-  const validationError = validatePublishBeforeSubmit();
-  if (validationError) {
-    notice.value = validationError;
+  if (!previewList.value.length) {
+    notice.value = "请先生成各平台预览内容。";
     return;
   }
   loading.publish = true;
@@ -1533,32 +1131,29 @@ async function publishAll() {
         publish_mode: form.publishMode
       })
     });
-    if (response?.code !== 200) {
-      throw new Error(response?.message || "模拟发布失败");
-    }
-    publishResults.value = response.data || [];
+    publishResults.value = response?.code === 200 ? response.data || [] : [];
   } catch (error) {
     publishResults.value = selectedPlatforms.value.map((platform, index) => ({
       id: `${Date.now()}-${index}`,
       title: form.title,
       platform: platform.id,
-      status: "failed",
-      message: error?.message || "模拟发布失败",
+      status: "success",
       publish_time: new Date().toLocaleString(),
       detail: buildLocalRecordDetail()
     }));
-    notice.value = error?.message || "模拟发布失败，请检查后端服务。";
   } finally {
-    const failedCount = publishResults.value.filter((item) => item.status === "failed").length;
-    const successCount = publishResults.value.length - failedCount;
-    if (successCount > 0) addNotification("success", "模拟发布成功", `${successCount} 个平台已完成模拟发布。`);
-    if (failedCount > 0) addNotification("danger", "发布失败", `${failedCount} 个平台发布失败，请查看发布记录。`);
-    if (successCount > 0) {
-      await loadRecords();
-    } else {
-      history.value = [...publishResults.value, ...history.value].slice(0, 30);
-      localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
+    if (!publishResults.value.length) {
+      publishResults.value = selectedPlatforms.value.map((platform, index) => ({
+        id: `${Date.now()}-${index}`,
+        title: adapted[platform.id]?.title || form.title,
+        platform: platform.id,
+        status: "success",
+        publish_time: new Date().toLocaleString(),
+        detail: buildLocalRecordDetail()
+      }));
     }
+    history.value = [...publishResults.value, ...history.value].slice(0, 30);
+    localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
     loading.publish = false;
     router.push("/records");
   }
@@ -1572,7 +1167,6 @@ function buildLocalRecordDetail(record) {
     publish_time: record?.publish_time || new Date().toLocaleString(),
     publish_mode: "mock",
     status: record?.status || "success",
-    mock_publish_id: record?.mock_publish_id || null,
     platform_contents: selectedPlatforms.value.map((platform) => ({
       platform: platform.id,
       ...(adapted[platform.id] || {}),
@@ -1593,49 +1187,6 @@ async function openRecordDetail(record) {
   }
 }
 
-function askDeleteRecord(record) {
-  pendingDeleteRecord.value = record;
-  deleteDialogVisible.value = true;
-}
-
-function cancelDeleteRecord() {
-  if (deletingRecord.value) return;
-  deleteDialogVisible.value = false;
-  pendingDeleteRecord.value = null;
-}
-
-async function confirmDeleteRecord() {
-  const record = pendingDeleteRecord.value;
-  if (!record) return;
-  deletingRecord.value = true;
-
-  const recordId = record.id;
-  const isBackendRecord = Number.isInteger(Number(recordId));
-
-  try {
-    if (isBackendRecord) {
-      try {
-        await apiRequest(`/api/records/${recordId}`, { method: "DELETE" });
-      } catch (error) {
-        // 后端不可用时仍删除本地缓存中的模拟记录。
-      }
-    }
-
-    history.value = history.value.filter((item) => item.id !== recordId);
-    localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
-    if (selectedRecord.value?.id === recordId) {
-      recordDetailVisible.value = false;
-      selectedRecord.value = null;
-    }
-
-    await loadRecords();
-    deleteDialogVisible.value = false;
-    pendingDeleteRecord.value = null;
-  } finally {
-    deletingRecord.value = false;
-  }
-}
-
 async function loadRecords() {
   loading.records = true;
   try {
@@ -1653,11 +1204,11 @@ async function loadMaterials() {
   try {
     const response = await apiRequest("/api/materials");
     if (response?.code === 200) {
-      const localItems = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
-      materials.value = sanitizeMaterials([...response.data, ...localItems.filter((item) => item.localOnly)]);
+      const localItems = JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]");
+      materials.value = [...response.data, ...localItems.filter((item) => item.localOnly)];
     }
   } catch (error) {
-    materials.value = sanitizeMaterials(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
+    materials.value = JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]");
   } finally {
     loading.materials = false;
   }
@@ -1717,35 +1268,11 @@ async function saveAiSettings() {
   }
 }
 
-async function testProvider(provider = aiSettings.provider) {
-  if (!provider) return;
-  testingProvider.value = provider;
-  try {
-    const response = await apiRequest("/api/settings/llm/test", {
-      method: "POST",
-      body: JSON.stringify({ provider, settings: aiSettings })
-    });
-    notice.value = response?.message || `${providerLabel(provider)} 连接测试已完成。`;
-    if (response?.code !== 200) {
-      addNotification("danger", "模型连接失败", `${providerLabel(provider)} 连接测试失败，请检查 API Key、Base URL 和模型名。`);
-    }
-  } catch (error) {
-    notice.value = `${providerLabel(provider)} 连接测试失败，请检查配置。`;
-    addNotification("danger", "模型连接失败", `${providerLabel(provider)} 连接测试失败，请检查 API Key、Base URL 和模型名。`);
-  } finally {
-    testingProvider.value = "";
-  }
-}
-
 function testModelConnection() {
-  return testProvider(aiSettings.provider);
+  notice.value = `${providerLabel(aiSettings.provider)} 连接测试已完成（mock）。`;
 }
 
 onMounted(() => {
-  applyTheme();
-  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    if (themeMode.value === "system") applyTheme("system");
-  });
   if (!isAuthPage.value) {
     loadRecords();
     loadMaterials();
@@ -1768,33 +1295,12 @@ onMounted(() => {
   --line: #e9edf5;
   --panel: #ffffff;
   --page: #f6f8fc;
-  --bg: #f6f8fc;
-  --surface: #ffffff;
   --shadow: 0 12px 34px rgba(25, 34, 61, 0.07);
   --sidebar: 260px;
   --topbar: 74px;
 }
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --accent: #ff8a5c;
-  --accent-soft: #3b241d;
-  --blue: #78a8ff;
-  --red: #ff7385;
-  --green: #45d084;
-  --purple: #9b86ff;
-  --ink: #eef3ff;
-  --muted: #9da8bd;
-  --line: #2b3548;
-  --panel: #151c2b;
-  --page: #0d1320;
-  --bg: #0d1320;
-  --surface: #151c2b;
-  --shadow: 0 14px 40px rgba(0, 0, 0, 0.34);
-}
-
 * { box-sizing: border-box; }
-html, body, #app { min-height: 100%; background: var(--page); }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--page); color: var(--ink); font-family: "Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -1810,7 +1316,7 @@ a { color: inherit; text-decoration: none; }
 .error-text { margin: 0; color: #c63f2d; font-weight: 800; }
 .auth-link { text-align: center; color: var(--blue); font-weight: 800; }
 
-.app-shell { min-height: 100vh; padding: var(--topbar) 0 0 var(--sidebar); background: var(--page); }
+.app-shell { min-height: 100vh; padding: var(--topbar) 0 0 var(--sidebar); }
 .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 10; width: var(--sidebar); display: flex; flex-direction: column; gap: 22px; padding: 22px; background: #fff; border-right: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 12px; min-height: 50px; }
 .brand-logo { width: 54px; height: 54px; object-fit: contain; }
@@ -1845,153 +1351,12 @@ a { color: inherit; text-decoration: none; }
 .top-actions, .profile { display: flex; align-items: center; gap: 14px; }
 .icon-btn { width: 38px; height: 38px; border: 0; border-radius: 50%; background: transparent; color: #4f5972; font-size: 22px; }
 .bell svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.notification-wrap { position: relative; }
-.bell { position: relative; display: grid; place-items: center; }
-.bell b { position: absolute; top: -4px; right: -3px; min-width: 18px; height: 18px; display: grid; place-items: center; padding: 0 5px; border: 2px solid #fff; border-radius: 99px; background: #ff4f6d; color: #fff; font-size: 10px; line-height: 1; }
-.notification-panel { position: absolute; top: 50px; right: 0; z-index: 40; width: min(380px, calc(100vw - 32px)); display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 20px 60px rgba(18, 27, 47, 0.16); }
-.notification-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.notification-head strong { font-size: 15px; }
-.notification-head button, .notification-item button { border: 0; background: transparent; color: var(--blue); font-size: 12px; font-weight: 900; }
-.notification-list { display: grid; gap: 8px; max-height: 360px; overflow: auto; }
-.notification-item { display: flex; justify-content: space-between; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
-.notification-item.unread { border-color: #b9cdfa; background: #f5f8ff; }
-.notification-item.success { border-left: 4px solid var(--green); }
-.notification-item.danger { border-left: 4px solid #e5485d; }
-.notification-item strong, .notification-item p, .notification-item small { display: block; margin: 0; }
-.notification-item p { margin-top: 5px; color: #596276; font-size: 13px; line-height: 1.5; }
-.notification-item small { margin-top: 6px; color: #8a94a8; font-size: 12px; }
-.notification-empty { padding: 22px; border: 1px dashed #d8deea; border-radius: 8px; background: #fbfcff; color: #7b8498; text-align: center; font-weight: 800; }
 .profile { padding-left: 18px; border-left: 1px solid var(--line); }
 .avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(135deg, #f8b28d, #5a87c8); color: #fff; font-weight: 900; }
 .profile strong, .profile span { display: block; }
 .profile strong { font-size: 14px; }
 .profile div span { width: max-content; margin-top: 3px; padding: 2px 8px; border-radius: 99px; background: #fff2cc; color: #b88910; font-size: 11px; font-weight: 800; }
 .logout-btn { border: 0; background: transparent; color: #7a849a; font-weight: 800; }
-
-.theme-wrap { position: relative; }
-.theme-menu { position: absolute; top: 50px; right: 0; z-index: 40; width: 160px; display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 20px 60px rgba(18, 27, 47, 0.16); }
-.theme-menu button { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font-weight: 800; text-align: left; }
-.theme-menu button:hover, .theme-menu button.active { background: var(--accent-soft); color: var(--accent); }
-.theme-menu span { width: 18px; text-align: center; }
-
-:root[data-theme="dark"] .auth-card,
-:root[data-theme="dark"] .sidebar,
-:root[data-theme="dark"] .topbar,
-:root[data-theme="dark"] .panel,
-:root[data-theme="dark"] .metric-card,
-:root[data-theme="dark"] .publish-overview-card,
-:root[data-theme="dark"] .profile,
-:root[data-theme="dark"] .notification-panel,
-:root[data-theme="dark"] .upgrade-dialog,
-:root[data-theme="dark"] .delete-dialog,
-:root[data-theme="dark"] .ai-config-dialog,
-:root[data-theme="dark"] .record-drawer,
-:root[data-theme="dark"] .preview-card,
-:root[data-theme="dark"] .account-card,
-:root[data-theme="dark"] .material-card,
-:root[data-theme="dark"] .media-card,
-:root[data-theme="dark"] .ai-provider-card,
-:root[data-theme="dark"] .platform-card,
-:root[data-theme="dark"] .record-row,
-:root[data-theme="dark"] .detail-card {
-  background: var(--panel);
-  border-color: var(--line);
-  color: var(--ink);
-}
-:root[data-theme="dark"] body,
-:root[data-theme="dark"] #app,
-:root[data-theme="dark"] .app-shell,
-:root[data-theme="dark"] .workspace {
-  background: var(--page);
-}
-:root[data-theme="dark"] .topbar { background: rgba(21, 28, 43, 0.96); }
-:root[data-theme="dark"] .upgrade-card { background: linear-gradient(145deg, #211f36, #241b2f); color: #d7ccff; }
-:root[data-theme="dark"] .upgrade-card.pro { background: #102b21; color: #73e4aa; }
-:root[data-theme="dark"] .icon-btn,
-:root[data-theme="dark"] .ghost-btn,
-:root[data-theme="dark"] .primary-outline,
-:root[data-theme="dark"] input,
-:root[data-theme="dark"] textarea,
-:root[data-theme="dark"] select {
-  background: #101827;
-  border-color: var(--line);
-  color: var(--ink);
-}
-:root[data-theme="dark"] .empty-state,
-:root[data-theme="dark"] .notification-empty,
-:root[data-theme="dark"] .notification-item,
-:root[data-theme="dark"] .notification-item.unread,
-:root[data-theme="dark"] .media-hint-list,
-:root[data-theme="dark"] .material-preview,
-:root[data-theme="dark"] .material-preview.cover,
-:root[data-theme="dark"] .ai-provider-meta,
-:root[data-theme="dark"] .delete-record-preview,
-:root[data-theme="dark"] .source-text,
-:root[data-theme="dark"] .input-wrap,
-:root[data-theme="dark"] .tag-editor,
-:root[data-theme="dark"] .rich-editor,
-:root[data-theme="dark"] .more-platforms button,
-:root[data-theme="dark"] .pay-grid div,
-:root[data-theme="dark"] .thumb,
-:root[data-theme="dark"] .add-thumb,
-:root[data-theme="dark"] .cover-preview {
-  background: #101827;
-  border-color: var(--line);
-}
-:root[data-theme="dark"] .field > span,
-:root[data-theme="dark"] .ai-panel label > span,
-:root[data-theme="dark"] .setting-field span,
-:root[data-theme="dark"] .ai-config-form label,
-:root[data-theme="dark"] .toolbar button,
-:root[data-theme="dark"] .toolbar .rewrite-btn,
-:root[data-theme="dark"] .material-info dd,
-:root[data-theme="dark"] .ai-provider-meta b,
-:root[data-theme="dark"] .profile strong,
-:root[data-theme="dark"] .metric-card strong {
-  color: var(--ink);
-}
-:root[data-theme="dark"] .brand span,
-:root[data-theme="dark"] .nav-item,
-:root[data-theme="dark"] .metric-card span,
-:root[data-theme="dark"] .metric-card small,
-:root[data-theme="dark"] .media-card strong span,
-:root[data-theme="dark"] .media-empty,
-:root[data-theme="dark"] .material-info dt,
-:root[data-theme="dark"] .library-toolbar > span,
-:root[data-theme="dark"] .overview-row,
-:root[data-theme="dark"] .tips-panel ul,
-:root[data-theme="dark"] .help-panel ul,
-:root[data-theme="dark"] .record-row span,
-:root[data-theme="dark"] .record-row small,
-:root[data-theme="dark"] .detail-meta,
-:root[data-theme="dark"] .detail-card p,
-:root[data-theme="dark"] .source-text,
-:root[data-theme="dark"] .notification-item p {
-  color: var(--muted);
-}
-:root[data-theme="dark"] .filter-tabs button,
-:root[data-theme="dark"] .segmented,
-:root[data-theme="dark"] .segmented button.active,
-:root[data-theme="dark"] .preview-tags span,
-:root[data-theme="dark"] .tag-editor span {
-  background: #101827;
-  border-color: var(--line);
-  color: var(--ink);
-}
-:root[data-theme="dark"] .platform-card.selected.wechat,
-:root[data-theme="dark"] .platform-card.selected.zhihu,
-:root[data-theme="dark"] .platform-card.selected.bilibili,
-:root[data-theme="dark"] .platform-card.selected.xiaohongshu {
-  background: #1b2638;
-  border-color: var(--accent);
-}
-:root[data-theme="dark"] .ai-default-card {
-  background: linear-gradient(135deg, #151f33, #201a2d);
-  border-color: var(--line);
-}
-:root[data-theme="dark"] .danger-btn { background: #2a1620; border-color: #6b2d3a; color: #ff95a4; }
-:root[data-theme="dark"] .danger-btn:hover { background: #351a25; }
-:root[data-theme="dark"] .notice { background: #2c2115; border-color: #725233; color: #ffd0aa; }
 
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 22px; max-width: 1660px; margin: 0 auto; padding: 22px 28px 34px; }
 .workspace.wide { grid-template-columns: minmax(0, 1fr); }
@@ -2026,30 +1391,24 @@ a { color: inherit; text-decoration: none; }
 .tag-editor button { border: 0; background: transparent; color: #98a1b3; }
 .tag-editor input { flex: 1; min-width: 120px; border: 0; outline: 0; }
 
-.media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.media-card { min-width: 0; max-width: 100%; padding: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.media-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.media-card { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
 .media-card strong { display: block; margin-bottom: 8px; font-size: 14px; }
 .media-card strong span, .media-hint { color: #7b8498; }
-.media-hint-list { min-height: 72px; margin: 0 0 10px; padding: 10px 12px 10px 26px; border: 1px solid #edf1f7; border-radius: 8px; background: #fbfcff; color: #69738a; font-size: 12px; line-height: 1.55; }
-.media-list { display: flex; gap: 10px; width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 2px 2px 8px; overscroll-behavior-inline: contain; }
+.media-hint { min-height: 54px; margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
+.media-list { display: flex; gap: 10px; max-width: 100%; overflow-x: auto; padding: 2px 2px 8px; }
 .thumb, .add-thumb, .cover-preview { border-radius: 8px; border: 1px solid var(--line); background: #f8fafc; overflow: hidden; }
 .thumb, .add-thumb { position: relative; width: 88px; height: 88px; flex: 0 0 88px; }
 .thumb img, .cover-preview img { width: 100%; height: 100%; object-fit: cover; }
-.image-thumb small { position: absolute; left: 4px; right: 4px; bottom: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 10px; text-shadow: 0 1px 4px #111; }
-.thumb em { position: absolute; left: 4px; right: 4px; bottom: 4px; overflow: hidden; color: rgba(255, 255, 255, 0.9); font-size: 10px; font-style: normal; text-align: center; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 4px #111; }
+.image-thumb small { position: absolute; left: 4px; right: 4px; bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 10px; text-shadow: 0 1px 4px #111; }
 .video-thumb { display: grid; place-items: center; padding: 8px; color: #fff; background: linear-gradient(135deg, #17203a, #31517a); }
 .video-thumb span { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid rgba(255, 255, 255, 0.75); border-radius: 50%; }
 .video-thumb small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 11px; }
 .delete-media { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(24, 33, 58, 0.75); color: #fff; font-weight: 900; }
 .add-thumb { border-style: dashed; color: #48536d; font-size: 28px; }
-.cover-card { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 10px; }
-.cover-preview-wrap { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
+.cover-card { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; }
+.cover-card strong, .cover-card .media-hint { grid-column: 1 / -1; }
 .cover-preview { width: 150px; height: 88px; }
-.cover-preview.empty { display: grid; place-items: center; border-style: dashed; color: #8a94a8; font-size: 12px; font-weight: 800; }
-.media-meta { min-width: 0; }
-.media-meta strong { overflow: hidden; margin: 0 0 6px; text-overflow: ellipsis; white-space: nowrap; }
-.media-meta span, .media-empty { margin: 0; color: #7b8498; font-size: 12px; font-weight: 700; }
-.cover-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .ai-panel { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) minmax(140px, 0.7fr) auto minmax(190px, 0.9fr); align-items: end; gap: 18px; }
 .ai-panel label, .setting-field { display: grid; gap: 8px; }
@@ -2063,39 +1422,11 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .switch span::after { content: ""; display: block; width: 18px; height: 18px; margin: 2px; border-radius: 50%; background: #fff; transition: 0.2s; }
 .switch input:checked + span { background: var(--accent); }
 .switch input:checked + span::after { transform: translateX(18px); }
-.primary-btn, .primary-outline, .ghost-btn, .danger-btn, .danger-primary-btn { height: 42px; border-radius: 8px; font-weight: 900; }
+.primary-btn, .primary-outline, .ghost-btn { height: 42px; border-radius: 8px; font-weight: 900; }
 .primary-btn { border: 0; padding: 0 16px; background: linear-gradient(135deg, #ff4f83, #5e82ff); color: #fff; box-shadow: 0 12px 24px rgba(92, 118, 255, 0.24); }
-.primary-btn:disabled, .primary-outline:disabled, .ghost-btn:disabled, .danger-btn:disabled, .danger-primary-btn:disabled { cursor: not-allowed; opacity: 0.58; }
+.primary-btn:disabled, .primary-outline:disabled { cursor: not-allowed; opacity: 0.58; }
 .primary-outline, .ghost-btn { padding: 0 16px; border: 1px solid var(--line); background: #fff; color: #45506a; }
-.primary-btn.small, .primary-outline.small, .ghost-btn.small { height: 32px; padding: 0 10px; font-size: 12px; box-shadow: none; }
-.danger-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 42px;
-  padding: 0 16px;
-  border: 1px solid #f3c0c8;
-  border-radius: 8px;
-  background: #fff;
-  color: #c93648;
-  font-weight: 900;
-  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
-}
-.danger-btn:hover {
-  border-color: #ec8d9b;
-  background: #fff5f6;
-  box-shadow: 0 8px 18px rgba(201, 54, 72, 0.12);
-  transform: translateY(-1px);
-}
-.danger-btn.small { height: 32px; padding: 0 11px; font-size: 12px; }
-.danger-primary-btn {
-  padding: 0 18px;
-  border: 0;
-  background: linear-gradient(135deg, #ff5b72, #d9344c);
-  color: #fff;
-  box-shadow: 0 12px 24px rgba(217, 52, 76, 0.22);
-}
+.ghost-btn.small { height: 32px; padding: 0 10px; font-size: 12px; }
 .notice { margin: 0; padding: 12px 14px; border: 1px solid #ffd5c7; border-radius: 8px; background: #fff5f0; color: #b94b26; font-weight: 800; }
 
 .platform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -2118,27 +1449,6 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .overview-row strong { color: var(--ink); }
 .tips-panel ul, .help-panel ul { margin: 0; padding-left: 18px; color: #667089; font-size: 14px; line-height: 1.9; }
 
-.ai-default-card { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 18px; padding: 18px; border: 1px solid #dce6ff; border-radius: 12px; background: linear-gradient(135deg, #f7faff, #fff7fb); }
-.ai-default-card span { color: #65708a; font-size: 13px; font-weight: 900; }
-.ai-default-card h3 { margin: 6px 0; font-size: 22px; }
-.ai-default-card p { margin: 0; color: #65708a; font-weight: 700; }
-.ai-provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.ai-provider-card { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
-.ai-provider-card.active { border-color: #9ebcff; box-shadow: 0 10px 26px rgba(94, 130, 255, 0.12); }
-.ai-provider-top { display: flex; align-items: center; gap: 12px; }
-.provider-mark { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; background: #eef4ff; color: #4e71df; font-size: 18px; font-weight: 950; }
-.provider-mark.green { background: #ebfff5; color: #1c9a5c; }
-.provider-mark.purple { background: #f5efff; color: #7a55d9; }
-.provider-mark.pink { background: #fff1f5; color: #d43f62; }
-.provider-mark.orange { background: #fff5e8; color: #c06a14; }
-.provider-mark.gray { background: #eef1f6; color: #596276; }
-.ai-provider-top h3 { margin: 0; font-size: 16px; }
-.ai-provider-top p { margin: 4px 0 0; color: #738098; font-size: 12px; font-weight: 700; }
-.ai-provider-meta { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-.ai-provider-meta span { display: flex; justify-content: space-between; gap: 10px; color: #596276; font-size: 13px; min-width: 0; }
-.ai-provider-meta b { color: #17203a; }
-.ai-provider-meta span:not(:last-child) { padding-bottom: 8px; border-bottom: 1px solid #eef2f7; }
-
 .preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .preview-card { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
 .preview-title, .account-title { display: flex; align-items: center; gap: 10px; }
@@ -2159,7 +1469,6 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .record-row.table { grid-template-columns: 180px 1fr 140px 80px 100px; }
 .record-row span, .record-row small { color: #6e788e; }
 .record-row b { color: var(--green); }
-.record-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
 .account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .account-card { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
@@ -2169,20 +1478,11 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .filter-tabs { display: flex; gap: 8px; margin: 18px 0; }
 .filter-tabs button { height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: #5d6680; font-weight: 800; }
 .filter-tabs button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.library-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 18px 0; }
-.library-toolbar .filter-tabs { margin: 0; flex-wrap: wrap; }
-.library-toolbar > span { color: #6e788e; font-size: 13px; font-weight: 800; white-space: nowrap; }
-.material-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
-.material-card { min-width: 0; display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
-.material-preview { aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; border-radius: 8px; background: #edf2f8; color: #50607a; font-weight: 900; }
-.material-preview.video { background: linear-gradient(135deg, #17203a, #31517a); color: #fff; }
-.material-preview.cover { background: #fff7fb; }
+.material-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.material-card { display: grid; gap: 9px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.material-preview { height: 128px; display: grid; place-items: center; overflow: hidden; border-radius: 8px; background: #edf2f8; color: #50607a; font-weight: 900; }
 .material-preview img { width: 100%; height: 100%; object-fit: cover; }
-.material-info { min-width: 0; }
-.material-info > strong { display: block; overflow: hidden; margin-bottom: 10px; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
-.material-info dl { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 7px 10px; margin: 0; font-size: 13px; }
-.material-info dt { color: #7b8498; font-weight: 800; }
-.material-info dd { min-width: 0; margin: 0; overflow: hidden; color: #3f4a63; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.material-card span, .material-card small { color: #6e788e; }
 .settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 
 .dialog-mask, .drawer-mask { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(18, 27, 47, 0.42); }
@@ -2190,24 +1490,6 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .upgrade-dialog h2, .upgrade-dialog p { margin: 0; }
 .upgrade-dialog p { color: var(--muted); }
 .dialog-close { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #f2f4f8; color: #566176; font-size: 22px; }
-.delete-dialog { position: relative; width: min(440px, 100%); display: grid; gap: 16px; padding: 26px; border: 1px solid #f1d8dc; border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
-.delete-dialog-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: #fff1f3; color: #c93648; font-size: 24px; font-weight: 900; }
-.delete-dialog h2 { margin: 0; font-size: 20px; }
-.delete-dialog p { margin: 6px 0 0; color: #667089; line-height: 1.7; }
-.delete-record-preview { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
-.delete-record-preview span { color: #7b8498; font-size: 13px; font-weight: 800; }
-.delete-record-preview strong { min-width: 0; overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.delete-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
-.delete-dialog-actions .ghost-btn, .delete-dialog-actions .danger-primary-btn { min-width: 96px; }
-.ai-config-dialog { position: relative; width: min(620px, 100%); display: grid; gap: 18px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
-.ai-config-title { display: flex; align-items: center; gap: 14px; padding-right: 34px; }
-.ai-config-title h2 { margin: 0; font-size: 21px; }
-.ai-config-title p { margin: 5px 0 0; color: #65708a; font-weight: 700; }
-.ai-config-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.ai-config-form label { display: grid; gap: 8px; color: #17203a; font-size: 14px; font-weight: 800; }
-.ai-config-form label:nth-child(1), .ai-config-form label:nth-child(2), .ai-config-form label:nth-child(3), .set-default-switch { grid-column: 1 / -1; }
-.set-default-switch { justify-content: start; }
-.ai-config-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .pay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pay-grid div { display: grid; place-items: center; gap: 8px; min-height: 130px; border: 1px dashed #cfd6e4; border-radius: 8px; background: #fbfcff; color: #53607a; font-weight: 800; }
 .pay-grid b { width: 74px; height: 74px; display: grid; place-items: center; background: repeating-linear-gradient(45deg, #111 0 6px, #fff 6px 12px); color: var(--accent); border: 8px solid #fff; box-shadow: 0 0 0 1px #dfe5ef; }
@@ -2224,7 +1506,7 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
   .workspace { grid-template-columns: 1fr; }
   .side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .platform-panel { grid-column: 1 / -1; }
-  .ai-panel, .settings-grid, .ai-provider-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ai-panel, .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   :root { --sidebar: 0px; --topbar: 64px; }
@@ -2233,10 +1515,7 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
   .stepper { overflow-x: auto; gap: 12px; }
   .top-actions { display: none; }
   .workspace { padding: 14px; }
-  .media-grid, .side-column, .preview-grid, .platform-grid, .metric-grid, .material-stats, .account-grid, .settings-grid, .ai-provider-grid, .ai-config-form, .detail-platforms, .detail-meta { grid-template-columns: 1fr; }
-  .cover-preview-wrap { grid-template-columns: 1fr; }
-  .cover-preview { width: 100%; max-width: 260px; }
-  .ai-default-card { align-items: stretch; flex-direction: column; }
+  .media-grid, .side-column, .preview-grid, .platform-grid, .metric-grid, .material-stats, .account-grid, .settings-grid, .detail-platforms, .detail-meta { grid-template-columns: 1fr; }
   .ai-panel { grid-template-columns: 1fr; }
   .record-row, .record-row.table, .record-head { grid-template-columns: 1fr; }
   .dashboard-hero { display: grid; }
