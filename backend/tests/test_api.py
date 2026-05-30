@@ -56,6 +56,35 @@ class ApiIntegrationTests(unittest.TestCase):
         data = response.json()["data"]
         self.assertIn("openai", data)
 
+    def test_ai_settings_default_provider_fallback_generation(self) -> None:
+        settings_payload = {
+            "provider": "deepseek",
+            "settings": {
+                "provider": "deepseek",
+                "deepseekKey": "",
+                "deepseekBaseUrl": "https://api.deepseek.com",
+                "deepseekModel": "deepseek-chat",
+                "deepseekTemperature": 0.7,
+                "deepseekMaxTokens": 2000,
+            },
+        }
+        settings_response = self.client.post("/api/settings/llm", json=settings_payload)
+        self.assertEqual(settings_response.status_code, 200)
+
+        payload = {
+            "title": "AI 改写链路测试",
+            "content": "用于验证默认模型配置读取失败后回退本地模板。",
+            "tags": ["AI", "测试"],
+            "platforms": ["wechat", "zhihu", "bilibili", "xiaohongshu"],
+            "use_ai": True,
+            "media_files": {},
+        }
+        response = self.client.post("/api/content/generate", json=payload)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["code"], 200)
+        self.assertEqual(set(data["data"].keys()), set(payload["platforms"]))
+
     def test_publish_api_full_flow(self) -> None:
         adapt_payload = {
             "title": "测试发布",

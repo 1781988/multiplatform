@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from database.db import create_media_file, create_platform_content, create_task
+from database.db import create_media_file, create_platform_content, create_task, get_ai_setting
 from models.schemas import AdaptRequest, ContentGenerateRequest, MediaFiles
 from services.adapter_service import adapt_content
 from services.llm_service import normalize_provider
@@ -45,7 +45,8 @@ def _handle_generate(payload: ContentGenerateRequest) -> dict | JSONResponse:
         )
 
     try:
-        provider = normalize_provider(payload.llm_provider)
+        default_ai_settings = get_ai_setting() if payload.use_ai else {}
+        provider = normalize_provider(payload.llm_provider or default_ai_settings.get("provider"))
         if payload.use_ai and not provider:
             provider = "openai"
         clean_media = _clean_media(payload.media_files)

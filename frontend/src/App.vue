@@ -55,18 +55,25 @@
         </router-link>
       </nav>
 
-      <div class="daily-card">
-        <p>今日发布统计</p>
-        <div class="daily-ring" :style="{ '--progress': `${progressPercent}%` }">
-          <span>{{ publishedToday }}/{{ dailyLimit }}</span>
-        </div>
-        <div class="daily-row">
-          <span>今日已发布</span>
-          <strong>{{ publishedToday }} 篇</strong>
-        </div>
-        <div class="daily-row">
-          <span>剩余可发布</span>
-          <strong>{{ Math.max(dailyLimit - publishedToday, 0) }} 篇</strong>
+      <div class="publish-overview-card">
+        <p>发布概览</p>
+        <div class="publish-overview-grid">
+          <div class="publish-overview-item">
+            <span>今日发布</span>
+            <strong>{{ publishOverview.today }} 篇</strong>
+          </div>
+          <div class="publish-overview-item">
+            <span>本周发布</span>
+            <strong>{{ publishOverview.week }} 篇</strong>
+          </div>
+          <div class="publish-overview-item">
+            <span>累计发布</span>
+            <strong>{{ publishOverview.total }} 篇</strong>
+          </div>
+          <div class="publish-overview-item">
+            <span>发布成功率</span>
+            <strong>{{ publishOverview.successRate }}%</strong>
+          </div>
         </div>
       </div>
 
@@ -157,6 +164,77 @@
       </section>
     </div>
 
+    <div v-if="deleteDialogVisible" class="dialog-mask" @click.self="cancelDeleteRecord">
+      <section class="delete-dialog">
+        <button class="dialog-close" type="button" :disabled="deletingRecord" @click="cancelDeleteRecord">×</button>
+        <div class="delete-dialog-icon">!</div>
+        <div>
+          <h2>删除发布记录</h2>
+          <p>确认删除这条发布记录吗？当前是模拟发布，只会删除本地系统记录，不会影响真实平台帖子。</p>
+        </div>
+        <div class="delete-record-preview">
+          <span>任务标题</span>
+          <strong>{{ pendingDeleteRecord?.title || form.title || "-" }}</strong>
+          <span>发布平台</span>
+          <strong>{{ platformName(pendingDeleteRecord?.platform || pendingDeleteRecord?.id) }}</strong>
+        </div>
+        <div class="delete-dialog-actions">
+          <button class="ghost-btn" type="button" :disabled="deletingRecord" @click="cancelDeleteRecord">取消</button>
+          <button class="danger-primary-btn" type="button" :disabled="deletingRecord" @click="confirmDeleteRecord">
+            {{ deletingRecord ? "删除中..." : "确认删除" }}
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="aiConfigDialogVisible" class="dialog-mask" @click.self="closeAiConfigDialog">
+      <section class="ai-config-dialog">
+        <button class="dialog-close" type="button" :disabled="loading.settings" @click="closeAiConfigDialog">×</button>
+        <div class="ai-config-title">
+          <span :class="['provider-mark', currentEditingProvider?.tone]">{{ currentEditingProvider?.label?.slice(0, 1) }}</span>
+          <div>
+            <h2>{{ currentEditingProvider?.label }} 配置</h2>
+            <p>{{ currentEditingProvider?.description }}</p>
+          </div>
+        </div>
+        <div class="ai-config-form">
+          <label v-if="currentEditingProvider?.requiresKey">
+            <span>API Key</span>
+            <input v-model.trim="aiConfigDraft.key" type="password" placeholder="请输入 API Key" />
+          </label>
+          <label>
+            <span>Base URL</span>
+            <input v-model.trim="aiConfigDraft.baseUrl" placeholder="例如 https://api.openai.com/v1" />
+          </label>
+          <label>
+            <span>模型名</span>
+            <input v-model.trim="aiConfigDraft.model" placeholder="例如 gpt-4o-mini" />
+          </label>
+          <label>
+            <span>Temperature</span>
+            <input v-model.number="aiConfigDraft.temperature" type="number" min="0" max="2" step="0.1" />
+          </label>
+          <label>
+            <span>Max Tokens</span>
+            <input v-model.number="aiConfigDraft.maxTokens" type="number" min="256" step="256" />
+          </label>
+          <label class="switch set-default-switch">
+            <input v-model="aiConfigDraft.setDefault" type="checkbox" />
+            <span></span>
+            设为默认模型
+          </label>
+        </div>
+        <div class="ai-config-actions">
+          <button class="ghost-btn" type="button" :disabled="loading.settings" @click="testCurrentProvider">
+            {{ testingProvider === editingProvider ? "测试中..." : "测试连接" }}
+          </button>
+          <button class="primary-btn" type="button" :disabled="loading.settings" @click="saveAiProviderConfig">
+            {{ loading.settings ? "保存中..." : "保存配置" }}
+          </button>
+        </div>
+      </section>
+    </div>
+
     <div v-if="recordDetailVisible" class="drawer-mask" @click.self="recordDetailVisible = false">
       <section class="record-drawer">
         <button class="dialog-close" type="button" @click="recordDetailVisible = false">×</button>
@@ -198,6 +276,13 @@ const coverInput = ref(null);
 const materialFilter = ref("all");
 const recordDetailVisible = ref(false);
 const selectedRecord = ref(null);
+const deleteDialogVisible = ref(false);
+const pendingDeleteRecord = ref(null);
+const deletingRecord = ref(false);
+const aiConfigDialogVisible = ref(false);
+const editingProvider = ref(null);
+const aiConfigDraft = reactive({});
+const testingProvider = ref("");
 
 const authForm = reactive({ name: "", account: "", password: "", confirm: "" });
 const authError = ref("");
@@ -217,7 +302,6 @@ const taskId = ref(null);
 const loading = reactive({ adapt: false, publish: false, records: false, materials: false, settings: false });
 const publishResults = ref([]);
 const adapted = reactive({});
-const dailyLimit = 10;
 const materials = ref(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
 const history = ref(JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]"));
 const coverPlaceholder = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=900&q=80";
@@ -227,16 +311,32 @@ const aiSettings = reactive({
   openaiKey: "",
   openaiBaseUrl: "https://api.openai.com/v1",
   openaiModel: "gpt-4o-mini",
+  openaiTemperature: 0.7,
+  openaiMaxTokens: 2000,
   qwenKey: "",
   qwenBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   qwenModel: "qwen-plus",
+  qwenTemperature: 0.7,
+  qwenMaxTokens: 2000,
   geminiKey: "",
+  geminiBaseUrl: "",
   geminiModel: "gemini-1.5-flash",
+  geminiTemperature: 0.7,
+  geminiMaxTokens: 2000,
   deepseekKey: "",
   deepseekBaseUrl: "https://api.deepseek.com",
   deepseekModel: "deepseek-chat",
+  deepseekTemperature: 0.7,
+  deepseekMaxTokens: 2000,
   ollamaBaseUrl: "http://localhost:11434",
   ollamaModel: "qwen2.5:7b",
+  ollamaTemperature: 0.7,
+  ollamaMaxTokens: 2000,
+  localKey: "",
+  localBaseUrl: "http://127.0.0.1:8000/v1",
+  localModel: "local-model",
+  localTemperature: 0.7,
+  localMaxTokens: 2000,
   defaultLang: outputLang.value,
   defaultIntensity: aiIntensity.value
 });
@@ -295,12 +395,12 @@ const morePlatforms = [
 ];
 
 const providers = [
-  { value: "openai", label: "OpenAI (gpt-4o-mini)" },
-  { value: "gemini", label: "Gemini" },
-  { value: "qwen", label: "Qwen" },
-  { value: "deepseek", label: "DeepSeek" },
-  { value: "ollama", label: "Ollama" },
-  { value: "local", label: "Local" }
+  { value: "openai", label: "OpenAI", tone: "blue", description: "OpenAI 官方或兼容接口", requiresKey: true },
+  { value: "qwen", label: "Qwen", tone: "green", description: "通义千问 DashScope 兼容接口", requiresKey: true },
+  { value: "gemini", label: "Gemini", tone: "purple", description: "Google Gemini 模型服务", requiresKey: true },
+  { value: "deepseek", label: "DeepSeek", tone: "pink", description: "DeepSeek Chat / Coder 服务", requiresKey: true },
+  { value: "ollama", label: "Ollama", tone: "orange", description: "本机 Ollama 模型服务", requiresKey: false },
+  { value: "local", label: "Local", tone: "gray", description: "私有化 OpenAI 兼容服务", requiresKey: false }
 ];
 
 const rewriteModes = [
@@ -312,8 +412,32 @@ const rewriteModes = [
 const isAuthPage = computed(() => route.path === "/login" || route.path === "/register");
 const isWidePage = computed(() => ["/dashboard", "/records", "/accounts", "/materials", "/settings", "/help"].includes(route.path));
 const showSideColumn = computed(() => ["/content", "/preview"].includes(route.path));
-const publishedToday = computed(() => history.value.length);
-const progressPercent = computed(() => (dailyLimit ? Math.round((publishedToday.value / dailyLimit) * 100) : 0));
+const publishOverview = computed(() => {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = now.getDay() || 7;
+  const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1).getTime();
+  let today = 0;
+  let week = 0;
+  let success = 0;
+  let failed = 0;
+
+  history.value.forEach((record) => {
+    const time = parsePublishTime(record.publish_time);
+    if (time >= startOfToday) today += 1;
+    if (time >= startOfWeek) week += 1;
+    if (record.status === "success") success += 1;
+    if (record.status === "failed") failed += 1;
+  });
+
+  const counted = success + failed;
+  return {
+    today,
+    week,
+    total: history.value.length,
+    successRate: counted ? Math.round((success / counted) * 100) : 0
+  };
+});
 const parsedTags = computed(() =>
   form.tagsText
     .split(/[,，、\s]+/)
@@ -354,7 +478,7 @@ const DashboardView = page(() => [
     ])
   ]),
   h("div", { class: "metric-grid" }, [
-    metric("今日发布", `${publishedToday.value}/${dailyLimit}`, "按当前用户统计"),
+    metric("今日发布", `${publishOverview.value.today} 篇`, "按当前用户统计"),
     metric("素材容量", materialStats.value.size, `${materials.value.length} 个素材`),
     metric("AI 模型", providerLabel(form.llmProvider), "当前默认生成模型"),
     metric("账号状态", `${Object.values(accounts).filter((item) => item.loggedIn).length}/4`, "已模拟登录平台")
@@ -459,29 +583,16 @@ const MaterialsView = page(() => [
 
 const SettingsView = page(() => [
   h("article", { class: "panel settings-panel" }, [
-    h("div", { class: "panel-head" }, [h("div", [h("h2", "AI 设置中心"), h("p", "配置全局模型 API Key、Base URL 和默认生成参数。")])]),
-    h("div", { class: "settings-grid" }, [
-      settingSelect("默认模型", "provider", providers),
-      settingInput("OpenAI API Key", "openaiKey", true),
-      settingInput("OpenAI Base URL", "openaiBaseUrl"),
-      settingInput("OpenAI Model", "openaiModel"),
-      settingInput("Qwen API Key", "qwenKey", true),
-      settingInput("Qwen Base URL", "qwenBaseUrl"),
-      settingInput("Qwen Model", "qwenModel"),
-      settingInput("Gemini API Key", "geminiKey", true),
-      settingInput("Gemini Model", "geminiModel"),
-      settingInput("DeepSeek API Key", "deepseekKey", true),
-      settingInput("DeepSeek Base URL", "deepseekBaseUrl"),
-      settingInput("DeepSeek Model", "deepseekModel"),
-      settingInput("Ollama Base URL", "ollamaBaseUrl"),
-      settingInput("Ollama Model", "ollamaModel"),
-      settingSelect("默认语言", "defaultLang", [{ value: "zh", label: "中文" }, { value: "en", label: "English" }]),
-      settingSelect("默认改写强度", "defaultIntensity", rewriteModes)
+    h("div", { class: "panel-head" }, [h("div", [h("h2", "AI 设置中心"), h("p", "管理模型服务、默认模型和后续真实 API 接入参数。")])]),
+    h("section", { class: "ai-default-card" }, [
+      h("div", [
+        h("span", "当前默认模型"),
+        h("h3", `${providerLabel(aiSettings.provider)} · ${providerModel(aiSettings.provider) || "未配置模型"}`),
+        h("p", `默认语言：${aiSettings.defaultLang === "en" ? "English" : "中文"} / 改写强度：${rewriteModeLabel(aiSettings.defaultIntensity)}`)
+      ]),
+      h("button", { class: "primary-outline", onClick: () => openAiConfigDialog(aiSettings.provider) }, "配置默认模型")
     ]),
-    h("div", { class: "settings-actions" }, [
-      h("button", { class: "ghost-btn", onClick: testModelConnection }, "测试连接"),
-      h("button", { class: "primary-btn", onClick: saveAiSettings }, "保存设置")
-    ]),
+    h("div", { class: "ai-provider-grid" }, providers.map((provider) => aiProviderCard(provider))),
     notice.value ? h("p", { class: "notice" }, notice.value) : null
   ])
 ]);
@@ -669,7 +780,10 @@ function recordRow(record, table = false) {
       h("strong", record.title || form.title),
       h("span", platformName(record.platform || record.id)),
       h("b", record.status === "failed" ? "失败" : "成功"),
-      h("button", { class: "ghost-btn small" }, "查看详情")
+      h("div", { class: "record-actions" }, [
+        h("button", { class: "ghost-btn small", onClick: (event) => { event.stopPropagation(); open(); } }, "查看详情"),
+        h("button", { class: "danger-btn small", onClick: (event) => { event.stopPropagation(); askDeleteRecord(record); } }, "删除")
+      ])
     ]);
   }
   return h("div", { class: "record-row", onClick: open }, [
@@ -690,6 +804,30 @@ function materialCard(item) {
       h("button", { class: "ghost-btn small", onClick: () => copyText(item.url) }, "复制链接"),
       h("button", { class: "ghost-btn small", onClick: () => addMaterialToCurrentTask(item) }, "加入创作"),
       h("button", { class: "ghost-btn small", onClick: () => removeMaterial(item) }, "删除")
+    ])
+  ]);
+}
+
+function aiProviderCard(provider) {
+  const isDefault = aiSettings.provider === provider.value;
+  const configured = isProviderConfigured(provider.value);
+  return h("section", { class: ["ai-provider-card", provider.tone, { active: isDefault }] }, [
+    h("div", { class: "ai-provider-top" }, [
+      h("span", { class: ["provider-mark", provider.tone] }, provider.label.slice(0, 1)),
+      h("div", [
+        h("h3", provider.label),
+        h("p", provider.description)
+      ])
+    ]),
+    h("div", { class: "ai-provider-meta" }, [
+      h("span", [h("b", "模型"), providerModel(provider.value) || "未配置"]),
+      h("span", [h("b", "状态"), configured ? "已配置" : "待配置"]),
+      h("span", [h("b", "默认"), isDefault ? "是" : "否"])
+    ]),
+    h("div", { class: "card-actions" }, [
+      h("button", { class: "ghost-btn small", onClick: () => openAiConfigDialog(provider.value) }, "配置"),
+      h("button", { class: "ghost-btn small", disabled: testingProvider.value === provider.value, onClick: () => testProvider(provider.value) }, testingProvider.value === provider.value ? "测试中..." : "测试连接"),
+      h("button", { class: isDefault ? "primary-outline small" : "primary-btn small", disabled: isDefault || loading.settings, onClick: () => setDefaultProvider(provider.value) }, isDefault ? "默认模型" : "设为默认")
     ])
   ]);
 }
@@ -837,8 +975,81 @@ function providerLabel(id) {
   return providers.find((provider) => provider.value === id)?.label || id;
 }
 
+const currentEditingProvider = computed(() => providers.find((provider) => provider.value === editingProvider.value));
+
+function rewriteModeLabel(value) {
+  return rewriteModes.find((mode) => mode.value === value)?.label || value || "balanced";
+}
+
+function providerKey(provider, field) {
+  return `${provider}${field[0].toUpperCase()}${field.slice(1)}`;
+}
+
+function providerModel(provider) {
+  return aiSettings[providerKey(provider, "model")];
+}
+
+function isProviderConfigured(provider) {
+  const meta = providers.find((item) => item.value === provider);
+  const hasModel = Boolean(aiSettings[providerKey(provider, "model")]);
+  const hasBaseUrl = provider === "gemini" || Boolean(aiSettings[providerKey(provider, "baseUrl")]);
+  const hasKey = !meta?.requiresKey || Boolean(aiSettings[providerKey(provider, "key")]);
+  return hasModel && hasBaseUrl && hasKey;
+}
+
+function openAiConfigDialog(provider) {
+  editingProvider.value = provider;
+  aiConfigDraft.key = aiSettings[providerKey(provider, "key")] || "";
+  aiConfigDraft.baseUrl = aiSettings[providerKey(provider, "baseUrl")] || "";
+  aiConfigDraft.model = aiSettings[providerKey(provider, "model")] || "";
+  aiConfigDraft.temperature = Number(aiSettings[providerKey(provider, "temperature")] ?? 0.7);
+  aiConfigDraft.maxTokens = Number(aiSettings[providerKey(provider, "maxTokens")] ?? 2000);
+  aiConfigDraft.setDefault = aiSettings.provider === provider;
+  aiConfigDialogVisible.value = true;
+}
+
+function closeAiConfigDialog() {
+  if (loading.settings) return;
+  aiConfigDialogVisible.value = false;
+  editingProvider.value = null;
+}
+
+function applyDraftToSettings() {
+  const provider = editingProvider.value;
+  if (!provider) return;
+  aiSettings[providerKey(provider, "key")] = aiConfigDraft.key || "";
+  aiSettings[providerKey(provider, "baseUrl")] = aiConfigDraft.baseUrl || "";
+  aiSettings[providerKey(provider, "model")] = aiConfigDraft.model || "";
+  aiSettings[providerKey(provider, "temperature")] = Number(aiConfigDraft.temperature ?? 0.7);
+  aiSettings[providerKey(provider, "maxTokens")] = Number(aiConfigDraft.maxTokens ?? 2000);
+  if (aiConfigDraft.setDefault) aiSettings.provider = provider;
+}
+
+async function saveAiProviderConfig() {
+  applyDraftToSettings();
+  await saveAiSettings();
+  if (!loading.settings) closeAiConfigDialog();
+}
+
+async function setDefaultProvider(provider) {
+  aiSettings.provider = provider;
+  await saveAiSettings();
+}
+
+async function testCurrentProvider() {
+  applyDraftToSettings();
+  await testProvider(editingProvider.value);
+}
+
 function materialFilterLabel(type) {
   return { all: "全部", image: "图片", video: "视频", cover: "封面" }[type] || type;
+}
+
+function parsePublishTime(value) {
+  if (!value) return 0;
+  const normalized = typeof value === "string" ? value.replace(" ", "T") : value;
+  const time = new Date(normalized).getTime();
+  return Number.isNaN(time) ? 0 : time;
 }
 
 function formatSize(size = 0) {
@@ -1033,7 +1244,7 @@ async function generateContent() {
         author: username.value || null,
         platforms: form.platforms,
         use_ai: form.useAi,
-        llm_provider: form.useAi ? form.llmProvider : null,
+        llm_provider: form.useAi ? aiSettings.provider || form.llmProvider : null,
         media_files: {
           images: form.images.map((item) => item.url),
           videos: form.videos.map((item) => item.url),
@@ -1149,6 +1360,49 @@ async function openRecordDetail(record) {
   }
 }
 
+function askDeleteRecord(record) {
+  pendingDeleteRecord.value = record;
+  deleteDialogVisible.value = true;
+}
+
+function cancelDeleteRecord() {
+  if (deletingRecord.value) return;
+  deleteDialogVisible.value = false;
+  pendingDeleteRecord.value = null;
+}
+
+async function confirmDeleteRecord() {
+  const record = pendingDeleteRecord.value;
+  if (!record) return;
+  deletingRecord.value = true;
+
+  const recordId = record.id;
+  const isBackendRecord = Number.isInteger(Number(recordId));
+
+  try {
+    if (isBackendRecord) {
+      try {
+        await apiRequest(`/api/records/${recordId}`, { method: "DELETE" });
+      } catch (error) {
+        // 后端不可用时仍删除本地缓存中的模拟记录。
+      }
+    }
+
+    history.value = history.value.filter((item) => item.id !== recordId);
+    localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
+    if (selectedRecord.value?.id === recordId) {
+      recordDetailVisible.value = false;
+      selectedRecord.value = null;
+    }
+
+    await loadRecords();
+    deleteDialogVisible.value = false;
+    pendingDeleteRecord.value = null;
+  } finally {
+    deletingRecord.value = false;
+  }
+}
+
 async function loadRecords() {
   loading.records = true;
   try {
@@ -1230,8 +1484,24 @@ async function saveAiSettings() {
   }
 }
 
+async function testProvider(provider = aiSettings.provider) {
+  if (!provider) return;
+  testingProvider.value = provider;
+  try {
+    const response = await apiRequest("/api/settings/llm/test", {
+      method: "POST",
+      body: JSON.stringify({ provider, settings: aiSettings })
+    });
+    notice.value = response?.message || `${providerLabel(provider)} 连接测试已完成。`;
+  } catch (error) {
+    notice.value = `${providerLabel(provider)} 连接测试失败，请检查配置。`;
+  } finally {
+    testingProvider.value = "";
+  }
+}
+
 function testModelConnection() {
-  notice.value = `${providerLabel(aiSettings.provider)} 连接测试已完成（mock）。`;
+  return testProvider(aiSettings.provider);
 }
 
 onMounted(() => {
@@ -1290,13 +1560,13 @@ a { color: inherit; text-decoration: none; }
 .nav-item.active::before { content: ""; position: absolute; left: -22px; width: 4px; height: 28px; border-radius: 0 4px 4px 0; background: var(--accent); }
 .nav-icon { width: 24px; text-align: center; font-size: 18px; }
 
-.daily-card, .upgrade-card, .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
-.daily-card { margin-top: auto; padding: 18px; }
-.daily-card p { margin: 0 0 14px; font-weight: 800; font-size: 14px; }
-.daily-ring { width: 86px; height: 86px; display: grid; place-items: center; margin: 0 auto 16px; border-radius: 50%; background: radial-gradient(circle at center, #fff 54%, transparent 56%), conic-gradient(var(--accent) var(--progress), #edf0f5 0); }
-.daily-ring span { font-size: 20px; font-weight: 900; }
-.daily-row { display: flex; justify-content: space-between; color: #68728b; font-size: 13px; line-height: 2; }
-.daily-row strong { color: var(--ink); }
+.publish-overview-card, .upgrade-card, .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+.publish-overview-card { margin-top: auto; padding: 18px; }
+.publish-overview-card p { margin: 0 0 14px; font-weight: 800; font-size: 14px; }
+.publish-overview-grid { display: grid; gap: 10px; }
+.publish-overview-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; padding-bottom: 9px; border-bottom: 1px solid #f0f2f7; color: #68728b; font-size: 13px; }
+.publish-overview-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.publish-overview-item strong { color: var(--ink); font-size: 16px; white-space: nowrap; }
 .upgrade-card { display: grid; gap: 8px; padding: 18px; background: linear-gradient(145deg, #f0edff, #fff6fb); color: var(--purple); }
 .upgrade-card.pro { background: #f1fff8; color: #138452; }
 .upgrade-card span { font-size: 13px; }
@@ -1384,11 +1654,39 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .switch span::after { content: ""; display: block; width: 18px; height: 18px; margin: 2px; border-radius: 50%; background: #fff; transition: 0.2s; }
 .switch input:checked + span { background: var(--accent); }
 .switch input:checked + span::after { transform: translateX(18px); }
-.primary-btn, .primary-outline, .ghost-btn { height: 42px; border-radius: 8px; font-weight: 900; }
+.primary-btn, .primary-outline, .ghost-btn, .danger-btn, .danger-primary-btn { height: 42px; border-radius: 8px; font-weight: 900; }
 .primary-btn { border: 0; padding: 0 16px; background: linear-gradient(135deg, #ff4f83, #5e82ff); color: #fff; box-shadow: 0 12px 24px rgba(92, 118, 255, 0.24); }
-.primary-btn:disabled, .primary-outline:disabled { cursor: not-allowed; opacity: 0.58; }
+.primary-btn:disabled, .primary-outline:disabled, .ghost-btn:disabled, .danger-btn:disabled, .danger-primary-btn:disabled { cursor: not-allowed; opacity: 0.58; }
 .primary-outline, .ghost-btn { padding: 0 16px; border: 1px solid var(--line); background: #fff; color: #45506a; }
-.ghost-btn.small { height: 32px; padding: 0 10px; font-size: 12px; }
+.primary-btn.small, .primary-outline.small, .ghost-btn.small { height: 32px; padding: 0 10px; font-size: 12px; box-shadow: none; }
+.danger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 16px;
+  border: 1px solid #f3c0c8;
+  border-radius: 8px;
+  background: #fff;
+  color: #c93648;
+  font-weight: 900;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+.danger-btn:hover {
+  border-color: #ec8d9b;
+  background: #fff5f6;
+  box-shadow: 0 8px 18px rgba(201, 54, 72, 0.12);
+  transform: translateY(-1px);
+}
+.danger-btn.small { height: 32px; padding: 0 11px; font-size: 12px; }
+.danger-primary-btn {
+  padding: 0 18px;
+  border: 0;
+  background: linear-gradient(135deg, #ff5b72, #d9344c);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(217, 52, 76, 0.22);
+}
 .notice { margin: 0; padding: 12px 14px; border: 1px solid #ffd5c7; border-radius: 8px; background: #fff5f0; color: #b94b26; font-weight: 800; }
 
 .platform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -1411,6 +1709,27 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .overview-row strong { color: var(--ink); }
 .tips-panel ul, .help-panel ul { margin: 0; padding-left: 18px; color: #667089; font-size: 14px; line-height: 1.9; }
 
+.ai-default-card { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 18px; padding: 18px; border: 1px solid #dce6ff; border-radius: 12px; background: linear-gradient(135deg, #f7faff, #fff7fb); }
+.ai-default-card span { color: #65708a; font-size: 13px; font-weight: 900; }
+.ai-default-card h3 { margin: 6px 0; font-size: 22px; }
+.ai-default-card p { margin: 0; color: #65708a; font-weight: 700; }
+.ai-provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ai-provider-card { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.ai-provider-card.active { border-color: #9ebcff; box-shadow: 0 10px 26px rgba(94, 130, 255, 0.12); }
+.ai-provider-top { display: flex; align-items: center; gap: 12px; }
+.provider-mark { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; background: #eef4ff; color: #4e71df; font-size: 18px; font-weight: 950; }
+.provider-mark.green { background: #ebfff5; color: #1c9a5c; }
+.provider-mark.purple { background: #f5efff; color: #7a55d9; }
+.provider-mark.pink { background: #fff1f5; color: #d43f62; }
+.provider-mark.orange { background: #fff5e8; color: #c06a14; }
+.provider-mark.gray { background: #eef1f6; color: #596276; }
+.ai-provider-top h3 { margin: 0; font-size: 16px; }
+.ai-provider-top p { margin: 4px 0 0; color: #738098; font-size: 12px; font-weight: 700; }
+.ai-provider-meta { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.ai-provider-meta span { display: flex; justify-content: space-between; gap: 10px; color: #596276; font-size: 13px; min-width: 0; }
+.ai-provider-meta b { color: #17203a; }
+.ai-provider-meta span:not(:last-child) { padding-bottom: 8px; border-bottom: 1px solid #eef2f7; }
+
 .preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .preview-card { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
 .preview-title, .account-title { display: flex; align-items: center; gap: 10px; }
@@ -1431,6 +1750,7 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .record-row.table { grid-template-columns: 180px 1fr 140px 80px 100px; }
 .record-row span, .record-row small { color: #6e788e; }
 .record-row b { color: var(--green); }
+.record-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
 .account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .account-card { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
@@ -1452,6 +1772,24 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .upgrade-dialog h2, .upgrade-dialog p { margin: 0; }
 .upgrade-dialog p { color: var(--muted); }
 .dialog-close { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #f2f4f8; color: #566176; font-size: 22px; }
+.delete-dialog { position: relative; width: min(440px, 100%); display: grid; gap: 16px; padding: 26px; border: 1px solid #f1d8dc; border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
+.delete-dialog-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: #fff1f3; color: #c93648; font-size: 24px; font-weight: 900; }
+.delete-dialog h2 { margin: 0; font-size: 20px; }
+.delete-dialog p { margin: 6px 0 0; color: #667089; line-height: 1.7; }
+.delete-record-preview { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.delete-record-preview span { color: #7b8498; font-size: 13px; font-weight: 800; }
+.delete-record-preview strong { min-width: 0; overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.delete-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.delete-dialog-actions .ghost-btn, .delete-dialog-actions .danger-primary-btn { min-width: 96px; }
+.ai-config-dialog { position: relative; width: min(620px, 100%); display: grid; gap: 18px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
+.ai-config-title { display: flex; align-items: center; gap: 14px; padding-right: 34px; }
+.ai-config-title h2 { margin: 0; font-size: 21px; }
+.ai-config-title p { margin: 5px 0 0; color: #65708a; font-weight: 700; }
+.ai-config-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ai-config-form label { display: grid; gap: 8px; color: #17203a; font-size: 14px; font-weight: 800; }
+.ai-config-form label:nth-child(1), .ai-config-form label:nth-child(2), .ai-config-form label:nth-child(3), .set-default-switch { grid-column: 1 / -1; }
+.set-default-switch { justify-content: start; }
+.ai-config-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .pay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pay-grid div { display: grid; place-items: center; gap: 8px; min-height: 130px; border: 1px dashed #cfd6e4; border-radius: 8px; background: #fbfcff; color: #53607a; font-weight: 800; }
 .pay-grid b { width: 74px; height: 74px; display: grid; place-items: center; background: repeating-linear-gradient(45deg, #111 0 6px, #fff 6px 12px); color: var(--accent); border: 8px solid #fff; box-shadow: 0 0 0 1px #dfe5ef; }
@@ -1468,7 +1806,7 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
   .workspace { grid-template-columns: 1fr; }
   .side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .platform-panel { grid-column: 1 / -1; }
-  .ai-panel, .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ai-panel, .settings-grid, .ai-provider-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   :root { --sidebar: 0px; --topbar: 64px; }
@@ -1477,7 +1815,8 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
   .stepper { overflow-x: auto; gap: 12px; }
   .top-actions { display: none; }
   .workspace { padding: 14px; }
-  .media-grid, .side-column, .preview-grid, .platform-grid, .metric-grid, .material-stats, .account-grid, .settings-grid, .detail-platforms, .detail-meta { grid-template-columns: 1fr; }
+  .media-grid, .side-column, .preview-grid, .platform-grid, .metric-grid, .material-stats, .account-grid, .settings-grid, .ai-provider-grid, .ai-config-form, .detail-platforms, .detail-meta { grid-template-columns: 1fr; }
+  .ai-default-card { align-items: stretch; flex-direction: column; }
   .ai-panel { grid-template-columns: 1fr; }
   .record-row, .record-row.table, .record-head { grid-template-columns: 1fr; }
   .dashboard-hero { display: grid; }
