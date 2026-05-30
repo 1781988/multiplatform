@@ -276,6 +276,7 @@
         <div class="detail-meta">
           <span>发布时间：{{ selectedRecord?.publish_time || "-" }}</span>
           <span>发布模式：{{ selectedRecord?.publish_mode || "mock" }}</span>
+          <span>模拟发布ID：{{ selectedRecord?.mock_publish_id || "-" }}</span>
           <span>状态：{{ selectedRecord?.status || "success" }}</span>
           <span>平台数：{{ selectedRecord?.platform_contents?.length || 0 }}</span>
         </div>
@@ -1420,6 +1421,26 @@ function buildLocalPreview() {
   );
 }
 
+function validatePublishBeforeSubmit() {
+  if (!form.title.trim()) return "发布前请先填写标题。";
+  if (!form.content.trim()) return "发布前请先填写正文。";
+  if (!form.platforms.length) return "发布前请至少选择一个目标平台。";
+  if (!previewList.value.length) return "请先生成各平台预览内容。";
+
+  for (const platform of selectedPlatforms.value) {
+    const content = adapted[platform.id];
+    if (!content) return `${platform.name} 缺少待发布内容。`;
+    if (!String(content.title || "").trim()) return `${platform.name} 缺少标题。`;
+    const body = platform.id === "bilibili" ? content.description || content.content : content.content;
+    if (!String(body || "").trim()) return `${platform.name} 缺少正文内容。`;
+    if (platform.id === "bilibili") {
+      const video = content.video || content.videos?.[0] || form.videos[0]?.url;
+      if (!video) return "B站模拟发布需要至少上传 1 个视频素材。";
+    }
+  }
+  return "";
+}
+
 async function generateContent() {
   notice.value = "";
   if (!form.title.trim()) {
@@ -1496,8 +1517,9 @@ function logoutPlatform(platformId) {
 
 async function publishAll() {
   notice.value = "";
-  if (!previewList.value.length) {
-    notice.value = "请先生成各平台预览内容。";
+  const validationError = validatePublishBeforeSubmit();
+  if (validationError) {
+    notice.value = validationError;
     return;
   }
   loading.publish = true;
@@ -1511,33 +1533,32 @@ async function publishAll() {
         publish_mode: form.publishMode
       })
     });
-    publishResults.value = response?.code === 200 ? response.data || [] : [];
+    if (response?.code !== 200) {
+      throw new Error(response?.message || "模拟发布失败");
+    }
+    publishResults.value = response.data || [];
   } catch (error) {
     publishResults.value = selectedPlatforms.value.map((platform, index) => ({
       id: `${Date.now()}-${index}`,
       title: form.title,
       platform: platform.id,
-      status: "success",
+      status: "failed",
+      message: error?.message || "模拟发布失败",
       publish_time: new Date().toLocaleString(),
       detail: buildLocalRecordDetail()
     }));
+    notice.value = error?.message || "模拟发布失败，请检查后端服务。";
   } finally {
-    if (!publishResults.value.length) {
-      publishResults.value = selectedPlatforms.value.map((platform, index) => ({
-        id: `${Date.now()}-${index}`,
-        title: adapted[platform.id]?.title || form.title,
-        platform: platform.id,
-        status: "success",
-        publish_time: new Date().toLocaleString(),
-        detail: buildLocalRecordDetail()
-      }));
-    }
-    history.value = [...publishResults.value, ...history.value].slice(0, 30);
-    localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
     const failedCount = publishResults.value.filter((item) => item.status === "failed").length;
     const successCount = publishResults.value.length - failedCount;
     if (successCount > 0) addNotification("success", "模拟发布成功", `${successCount} 个平台已完成模拟发布。`);
     if (failedCount > 0) addNotification("danger", "发布失败", `${failedCount} 个平台发布失败，请查看发布记录。`);
+    if (successCount > 0) {
+      await loadRecords();
+    } else {
+      history.value = [...publishResults.value, ...history.value].slice(0, 30);
+      localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
+    }
     loading.publish = false;
     router.push("/records");
   }
@@ -1551,6 +1572,7 @@ function buildLocalRecordDetail(record) {
     publish_time: record?.publish_time || new Date().toLocaleString(),
     publish_mode: "mock",
     status: record?.status || "success",
+    mock_publish_id: record?.mock_publish_id || null,
     platform_contents: selectedPlatforms.value.map((platform) => ({
       platform: platform.id,
       ...(adapted[platform.id] || {}),

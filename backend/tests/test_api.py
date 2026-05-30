@@ -122,12 +122,16 @@ class ApiIntegrationTests(unittest.TestCase):
         publish_data = publish_response.json()
         self.assertEqual(publish_data["message"], "发布完成")
         self.assertEqual(len(publish_data["data"]), 2)
+        for item in publish_data["data"]:
+            self.assertEqual(item["status"], "success")
+            self.assertTrue(item["mock_publish_id"].startswith(f"mock_{item['platform']}_"))
 
         records_response = self.client.get("/api/records?limit=5")
         self.assertEqual(records_response.status_code, 200)
         records = records_response.json()["data"]
         self.assertIsInstance(records, list)
         self.assertTrue(any(record["platform"] == "wechat" for record in records))
+        self.assertTrue(any(record.get("mock_publish_id") for record in records))
 
     def test_publish_api_error_missing_contents(self) -> None:
         payload = {"task_id": 1000, "platforms": ["wechat"]}
