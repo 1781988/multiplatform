@@ -164,6 +164,29 @@
       </section>
     </div>
 
+    <div v-if="sampleDialogVisible" class="dialog-mask" @click.self="sampleDialogVisible = false">
+      <section class="sample-dialog">
+        <button class="dialog-close" type="button" @click="sampleDialogVisible = false">×</button>
+        <div class="sample-dialog-head">
+          <h2>选择样例内容</h2>
+          <p>选择一组样例后，将填充标题、正文和标签。</p>
+        </div>
+        <div class="sample-grid">
+          <button
+            v-for="sample in contentSamples"
+            :key="sample.id"
+            class="sample-card"
+            type="button"
+            @click="selectSample(sample)"
+          >
+            <strong>{{ sample.title }}</strong>
+            <span>{{ sample.summary }}</span>
+            <small>{{ sample.tags.join(" / ") }}</small>
+          </button>
+        </div>
+      </section>
+    </div>
+
     <div v-if="recordDetailVisible" class="drawer-mask" @click.self="recordDetailVisible = false">
       <section class="record-drawer">
         <button class="dialog-close" type="button" @click="recordDetailVisible = false">×</button>
@@ -213,6 +236,7 @@ const isPro = ref(localStorage.getItem("isPro") === "true");
 const vipStart = ref(localStorage.getItem("vipStart") || "");
 const vipEnd = ref(localStorage.getItem("vipEnd") || "");
 const upgradeDialogVisible = ref(false);
+const sampleDialogVisible = ref(false);
 const memberCode = ref("");
 const upgradeError = ref("");
 
@@ -225,7 +249,7 @@ const loading = reactive({ adapt: false, publish: false, records: false, materia
 const publishResults = ref([]);
 const adapted = reactive({});
 const materials = ref(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
-const history = ref(JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]"));
+const history = ref([]);
 const coverPlaceholder = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=900&q=80";
 
 const aiSettings = reactive({
@@ -262,10 +286,9 @@ const accounts = reactive({
 });
 
 const form = reactive({
-  title: "如何用AI工具提升大学生学习效率",
-  content:
-    "随着AI工具的快速发展，大学生在学习过程中可以利用AI辅助完成资料整理、论文阅读、知识总结、代码调试和复习规划等任务。合理使用AI工具不仅可以节省时间，还可以帮助学生建立更加清晰的知识结构。\n\n本文将从学习计划制定、课堂笔记整理、论文阅读辅助、代码学习和考试复习五个方面，介绍AI工具在学习效率提升中的实际应用方法。",
-  tagsText: "AI学习,大学生,效率提升,学习方法,人工智能",
+  title: "",
+  content: "",
+  tagsText: "",
   platforms: platforms.map((platform) => platform.id),
   useAi: true,
   llmProvider: aiSettings.provider,
@@ -313,6 +336,33 @@ const rewriteModes = [
   { value: "conservative", label: "保守" },
   { value: "balanced", label: "平衡" },
   { value: "creative", label: "创意" }
+];
+
+const contentSamples = [
+  {
+    id: "ai-learning",
+    title: "AI学习效率",
+    summary: "适合生成公众号、知乎和小红书学习方法类内容。",
+    content:
+      "随着AI工具的快速发展，大学生和职场新人可以利用AI辅助完成资料整理、论文阅读、知识总结、代码调试和复习规划等任务。合理使用AI工具不仅可以节省时间，还可以帮助使用者建立更加清晰的知识结构。\n\n本文将从学习计划制定、课堂笔记整理、论文阅读辅助、代码学习和考试复习五个方面，介绍AI工具在学习效率提升中的实际应用方法，并强调在使用过程中保持独立思考和信息核验的重要性。",
+    tags: ["AI学习", "效率提升", "学习方法", "人工智能"]
+  },
+  {
+    id: "ai-office-video",
+    title: "AI办公视频",
+    summary: "适合生成B站、短视频简介和办公效率教程内容。",
+    content:
+      "AI办公工具正在改变日常工作方式。从会议纪要、邮件草稿、表格分析到PPT大纲生成，AI可以帮助团队减少重复劳动，把更多时间投入到判断、沟通和创造性任务中。\n\n本期视频将用三个真实办公场景演示AI工具的使用流程：快速整理会议重点、把零散需求转成项目计划、根据数据生成汇报提纲。视频也会提醒大家注意隐私保护、数据脱敏和结果复核。",
+    tags: ["AI办公", "效率工具", "职场技能", "视频教程"]
+  },
+  {
+    id: "smart-product-review",
+    title: "智能产品测评",
+    summary: "适合生成产品测评、种草笔记和平台对比内容。",
+    content:
+      "这款智能产品主打便携、自动化和多设备联动，适合对效率、体验和智能场景有要求的用户。实际体验中，它的优势主要体现在上手简单、响应速度快、日常任务自动化程度高。\n\n测评将从外观设计、核心功能、连接稳定性、续航表现、使用门槛和适用人群六个维度展开，同时也会说明它的不足，例如高阶功能需要学习成本、部分场景依赖网络环境。最终给出适合购买的人群建议。",
+    tags: ["智能产品", "产品测评", "数码好物", "使用体验"]
+  }
 ];
 
 const isAuthPage = computed(() => route.path === "/login" || route.path === "/register");
@@ -510,7 +560,7 @@ const SettingsView = page(() => [
       settingSelect("默认改写强度", "defaultIntensity", rewriteModes)
     ]),
     h("div", { class: "settings-actions" }, [
-      h("button", { class: "ghost-btn", onClick: testModelConnection }, "测试连接"),
+      h("button", { class: "ghost-btn", disabled: loading.settings, onClick: testModelConnection }, loading.settings ? "测试中..." : "测试连接"),
       h("button", { class: "primary-btn", onClick: saveAiSettings }, "保存设置")
     ]),
     notice.value ? h("p", { class: "notice" }, notice.value) : null
@@ -701,7 +751,8 @@ function recordRow(record, table = false) {
       h("span", { class: "record-platform" }, platformName(record.platform || record.id)),
       h("span", { class: "record-status" }, publishStatusTags(record)),
       h("span", { class: "record-action" }, [
-        h("button", { class: "ghost-btn small", onClick: (event) => { event.stopPropagation(); open(); } }, "查看详情")
+        h("button", { class: "ghost-btn small", onClick: (event) => { event.stopPropagation(); open(); } }, "查看详情"),
+        h("button", { class: "danger-btn small", onClick: (event) => { event.stopPropagation(); deletePublishRecord(record); } }, "删除")
       ])
     ]);
   }
@@ -795,7 +846,7 @@ function applyLogin(data) {
 }
 
 async function afterAuth() {
-  history.value = JSON.parse(localStorage.getItem(`records:${username.value}`) || "[]");
+  history.value = [];
   materials.value = JSON.parse(localStorage.getItem(`materials:${username.value}`) || "[]");
   await Promise.all([loadRecords(), loadMaterials(), loadAiSettings(), loadAccounts()]);
   router.push("/dashboard");
@@ -845,12 +896,14 @@ function togglePlatform(id) {
 }
 
 function applySample() {
-  form.title = "如何用AI工具提升大学生学习效率";
-  form.content =
-    "随着AI工具的快速发展，大学生在学习过程中可以利用AI辅助完成资料整理、论文阅读、知识总结、代码调试和复习规划等任务。合理使用AI工具不仅可以节省时间，还可以帮助学生建立更加清晰的知识结构。\n\n本文将从学习计划制定、课堂笔记整理、论文阅读辅助、代码学习和考试复习五个方面，介绍AI工具在学习效率提升中的实际应用方法。";
-  form.tagsText = "AI学习,大学生,效率提升,学习方法,人工智能";
-  form.platforms = platforms.map((platform) => platform.id);
-  form.useAi = true;
+  sampleDialogVisible.value = true;
+}
+
+function selectSample(sample) {
+  form.title = sample.title;
+  form.content = sample.content;
+  form.tagsText = sample.tags.join(",");
+  sampleDialogVisible.value = false;
   notice.value = "";
   publishResults.value = [];
   clearAdapted();
@@ -1151,27 +1204,10 @@ async function publishAll() {
     });
     publishResults.value = response?.code === 200 ? response.data || [] : [];
   } catch (error) {
-    publishResults.value = selectedPlatforms.value.map((platform, index) => ({
-      id: `${Date.now()}-${index}`,
-      title: form.title,
-      platform: platform.id,
-      status: "success",
-      publish_time: new Date().toLocaleString(),
-      detail: buildLocalRecordDetail()
-    }));
+    publishResults.value = [];
+    notice.value = "模拟发布失败，未生成发布记录。";
   } finally {
-    if (!publishResults.value.length) {
-      publishResults.value = selectedPlatforms.value.map((platform, index) => ({
-        id: `${Date.now()}-${index}`,
-        title: adapted[platform.id]?.title || form.title,
-        platform: platform.id,
-        status: "success",
-        publish_time: new Date().toLocaleString(),
-        detail: buildLocalRecordDetail()
-      }));
-    }
-    history.value = [...publishResults.value, ...history.value].slice(0, 30);
-    localStorage.setItem(`records:${username.value || "guest"}`, JSON.stringify(history.value));
+    await loadRecords();
     loading.publish = false;
     router.push("/records");
   }
@@ -1205,13 +1241,37 @@ async function openRecordDetail(record) {
   }
 }
 
+async function deletePublishRecord(record) {
+  const recordId = Number(record.id);
+  if (!Number.isInteger(recordId)) {
+    history.value = history.value.filter((item) => item.id !== record.id);
+    return;
+  }
+  const confirmed = window.confirm("确认删除这条发布记录吗？当前是模拟发布，只会删除本地系统记录，不涉及真实平台帖子。");
+  if (!confirmed) return;
+  try {
+    const response = await apiRequest(`/api/records/${recordId}`, { method: "DELETE" });
+    if (response?.code !== 200) {
+      notice.value = response?.message || "删除发布记录失败。";
+      return;
+    }
+    if (selectedRecord.value?.id === recordId) {
+      recordDetailVisible.value = false;
+      selectedRecord.value = null;
+    }
+    await loadRecords();
+  } catch (error) {
+    notice.value = "删除发布记录失败，请检查后端服务。";
+  }
+}
+
 async function loadRecords() {
   loading.records = true;
   try {
     const response = await apiRequest("/api/records?limit=50");
-    if (response?.code === 200 && response.data?.length) history.value = response.data;
+    history.value = response?.code === 200 ? response.data || [] : [];
   } catch (error) {
-    history.value = JSON.parse(localStorage.getItem(`records:${username.value || "guest"}`) || "[]");
+    history.value = [];
   } finally {
     loading.records = false;
   }
@@ -1286,8 +1346,19 @@ async function saveAiSettings() {
   }
 }
 
-function testModelConnection() {
-  notice.value = `${providerLabel(aiSettings.provider)} 连接测试已完成（mock）。`;
+async function testModelConnection() {
+  loading.settings = true;
+  try {
+    const response = await apiRequest("/api/settings/llm/test", {
+      method: "POST",
+      body: JSON.stringify({ provider: aiSettings.provider, settings: aiSettings })
+    });
+    notice.value = response?.message || "模型连接测试完成。";
+  } catch (error) {
+    notice.value = "模型连接测试失败，请检查后端服务。";
+  } finally {
+    loading.settings = false;
+  }
 }
 
 onMounted(() => {
@@ -1567,6 +1638,15 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .upgrade-dialog h2, .upgrade-dialog p { margin: 0; }
 .upgrade-dialog p { color: var(--muted); }
 .dialog-close { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #f2f4f8; color: #566176; font-size: 22px; }
+.sample-dialog { position: relative; width: min(760px, 100%); display: grid; gap: 18px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
+.sample-dialog-head h2, .sample-dialog-head p { margin: 0; }
+.sample-dialog-head p { margin-top: 8px; color: var(--muted); }
+.sample-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.sample-card { min-height: 172px; display: grid; align-content: start; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; color: var(--ink); text-align: left; }
+.sample-card:hover { border-color: var(--accent); background: var(--accent-soft); }
+.sample-card strong { font-size: 16px; }
+.sample-card span { color: #58637a; font-size: 13px; line-height: 1.6; }
+.sample-card small { color: var(--accent); font-size: 12px; font-weight: 900; line-height: 1.5; }
 .pay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pay-grid div { display: grid; place-items: center; gap: 8px; min-height: 130px; border: 1px dashed #cfd6e4; border-radius: 8px; background: #fbfcff; color: #53607a; font-weight: 800; }
 .pay-grid b { width: 74px; height: 74px; display: grid; place-items: center; background: repeating-linear-gradient(45deg, #111 0 6px, #fff 6px 12px); color: var(--accent); border: 8px solid #fff; box-shadow: 0 0 0 1px #dfe5ef; }
@@ -1592,7 +1672,7 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
   .stepper { overflow-x: auto; gap: 12px; }
   .top-actions { display: none; }
   .workspace { padding: 14px; }
-  .media-grid, .side-column, .preview-grid, .platform-grid, .metric-grid, .material-stats, .account-grid, .settings-grid, .detail-platforms, .detail-meta { grid-template-columns: 1fr; }
+  .media-grid, .side-column, .preview-grid, .platform-grid, .metric-grid, .material-stats, .account-grid, .settings-grid, .sample-grid, .detail-platforms, .detail-meta { grid-template-columns: 1fr; }
   .ai-panel { grid-template-columns: 1fr; }
   .record-row:not(.table) { grid-template-columns: 1fr; }
   .dashboard-hero { display: grid; }
