@@ -56,6 +56,22 @@ class ApiIntegrationTests(unittest.TestCase):
         data = response.json()["data"]
         self.assertIn("openai", data)
 
+    def test_llm_connection_test_validation(self) -> None:
+        response = self.client.post(
+            "/api/settings/llm/test",
+            json={
+                "provider": "openai",
+                "settings": {
+                    "openaiKey": "",
+                    "openaiBaseUrl": "https://api.openai.com/v1",
+                    "openaiModel": "gpt-4o-mini",
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], 400)
+        self.assertIn("API Key", response.json()["message"])
+
     def test_materials_list_and_delete(self) -> None:
         create_media_file(None, "library-test.jpg", "/uploads/images/library-test.jpg", "image", 1024)
         list_response = self.client.get("/api/materials")
@@ -132,6 +148,13 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertIsInstance(records, list)
         self.assertTrue(any(record["platform"] == "wechat" for record in records))
         self.assertTrue(any(record.get("mock_publish_id") for record in records))
+
+        target_record = records[0]
+        delete_response = self.client.delete(f"/api/records/{target_record['id']}")
+        self.assertEqual(delete_response.status_code, 200)
+        after_delete_response = self.client.get("/api/records?limit=20")
+        after_delete_records = after_delete_response.json()["data"]
+        self.assertFalse(any(record["id"] == target_record["id"] for record in after_delete_records))
 
     def test_publish_api_error_missing_contents(self) -> None:
         payload = {"task_id": 1000, "platforms": ["wechat"]}
