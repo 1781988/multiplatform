@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from database.db import create_platform_content, create_task, get_ai_setting
 from models.schemas import AdaptRequest, ContentGenerateRequest, MediaFiles
 from services.adapter_service import adapt_content
+from services import llm_service
 from services.llm_service import normalize_provider
 
 router = APIRouter()
@@ -70,6 +71,7 @@ def _handle_generate(payload: ContentGenerateRequest) -> dict | JSONResponse:
         )
 
         data = adapt_content(clean_payload)
+        ai_message = llm_service.LAST_LLM_ERROR if payload.use_ai else ""
 
         for platform, payload_item in data.items():
             create_platform_content(task_id, platform, payload_item)
@@ -84,7 +86,13 @@ def _handle_generate(payload: ContentGenerateRequest) -> dict | JSONResponse:
             content={"code": 500, "message": "生成失败", "data": None},
         )
 
-    return {"code": 200, "message": "生成成功", "task_id": task_id, "data": data}
+    return {
+        "code": 200,
+        "message": ai_message or "生成成功",
+        "task_id": task_id,
+        "data": data,
+        "ai_fallback": bool(ai_message),
+    }
 
 
 @router.post("/content/generate")

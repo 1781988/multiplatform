@@ -6,6 +6,7 @@ from llm.factory import AVAILABLE_PROVIDERS, get_llm_provider
 from models.schemas import ContentGenerateRequest
 
 logger = logging.getLogger(__name__)
+LAST_LLM_ERROR = ""
 
 SYSTEM_PROMPT = """你是一个多平台内容运营助手。请根据用户提供的原始内容，将其改写为适合 {platform} 平台发布的内容。
 要求：
@@ -40,12 +41,15 @@ def normalize_provider(provider: Optional[str]) -> Optional[str]:
 
 
 def generate_ai_content(payload: ContentGenerateRequest) -> Optional[dict]:
+    global LAST_LLM_ERROR
+    LAST_LLM_ERROR = ""
     provider_name = (payload.llm_provider or "").strip().lower()
     if not provider_name:
         return None
 
     llm = get_llm_provider(provider_name)
     if llm is None:
+        LAST_LLM_ERROR = f"{provider_name} 未配置或 API Key 为空，已使用本地模板。"
         logger.warning("LLM provider %s unavailable, falling back to rule templates", provider_name)
         return None
 
@@ -67,6 +71,7 @@ def generate_ai_content(payload: ContentGenerateRequest) -> Optional[dict]:
             raw = llm.generate(prompt=user_prompt, system_prompt=system)
             results[platform] = _parse_ai_response(raw, platform, payload)
         except Exception as exc:
+            LAST_LLM_ERROR = f"{provider_name} 调用失败：{exc}"
             logger.warning("AI rewrite failed for %s: %s; using rule fallback", platform, exc)
             continue
 

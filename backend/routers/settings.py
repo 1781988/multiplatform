@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from database.db import get_ai_setting, save_ai_setting
+from llm.openai_provider import _normalize_base_url
 
 router = APIRouter(prefix="/settings")
 
@@ -37,16 +38,11 @@ def _bad(message: str):
 
 
 def _test_openai_compatible(provider: str, settings: dict):
-    try:
-        from openai import OpenAI
-    except Exception:
-        return _bad("后端缺少 openai 依赖，无法测试 OpenAI Compatible 模型")
-
     api_key = _setting(settings, provider, "key")
     base_url = _setting(settings, provider, "baseUrl")
     model = _setting(settings, provider, "model")
 
-    if provider != "local" and not api_key:
+    if provider not in {"local"} and not api_key:
         return _bad("请先填写 API Key")
     if not base_url:
         return _bad("请先填写 Base URL")
@@ -54,20 +50,37 @@ def _test_openai_compatible(provider: str, settings: dict):
         return _bad("请先填写模型名")
 
     try:
-        client = OpenAI(api_key=api_key or "local", base_url=base_url, timeout=10)
-        client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": "ping"}],
-            max_tokens=1,
-            temperature=0,
+        import requests
+
+        url = f"{_normalize_base_url(base_url)}/chat/completions"
+        response = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_key or 'local'}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 1,
+                "temperature": 0,
+            },
+            timeout=30,
         )
+        try:
+            data = response.json()
+        except ValueError:
+            data = {"error": {"message": response.text}}
+        if response.status_code >= 400:
+            message = data.get("error", {}).get("message") or response.text
+            return _bad(f"{provider} 连接失败：HTTP {response.status_code}: {message}")
     except Exception as exc:
         return _bad(f"{provider} 连接失败：{exc}")
 
     return {
         "code": 200,
         "message": f"{provider} 连接成功",
-        "data": {"provider": provider, "model": model, "mode": "openai-compatible"},
+        "data": {"provider": provider, "model": model, "mode": "openai-compatible", "url": url},
     }
 
 
@@ -118,6 +131,7 @@ def _test_ollama(settings: dict):
 def test_llm(payload: LLMTestRequest):
     provider = payload.provider.strip().lower()
     settings = payload.settings or {}
+    save_ai_setting(provider, settings)
     if provider in {"openai", "qwen", "deepseek", "local"}:
         return _test_openai_compatible(provider, settings)
     if provider == "gemini":
@@ -125,3 +139,28 @@ def test_llm(payload: LLMTestRequest):
     if provider == "ollama":
         return _test_ollama(settings)
     return _bad("不支持的模型服务商")
+
+
+@router.post("/llm-test")
+def test_llm_alias(payload: LLMTestRequest):
+    return test_llm(payload)
+
+
+@router.get("/llm/debug")
+def debug_llm():
+    settings = get_ai_setting()
+    provider = str(settings.get("provider") or "").lower()
+    if not provider:
+        return {"code": 200, "data": {"configured": False, "message": "尚未保存默认模型配置"}}
+    base_url = _setting(settings, provider, "baseUrl")
+    return {
+        "code": 200,
+        "data": {
+            "configured": True,
+            "provider": provider,
+            "model": _setting(settings, provider, "model"),
+            "has_key": bool(_setting(settings, provider, "key")) or provider in {"ollama", "local"},
+            "base_url": base_url,
+            "request_url": f"{_normalize_base_url(base_url)}/chat/completions" if base_url else "",
+        },
+    }

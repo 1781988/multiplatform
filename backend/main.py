@@ -7,7 +7,7 @@ from config import UPLOAD_ROOT, ensure_upload_dirs
 from database.db import init_db
 from routers import account, auth, content, llm, publish, settings, upload
 
-app = FastAPI(title="聚发舟 MultiPost AI", version="0.2.0")
+app = FastAPI(title="聚舟 MultiPost AI", version="0.2.0")
 
 ensure_upload_dirs()
 

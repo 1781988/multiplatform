@@ -1,8 +1,8 @@
 <template>
   <section v-if="isAuthPage" class="auth-page">
     <div class="auth-card">
-      <img src="/figures/聚发舟.png" alt="聚发舟" />
-      <h1>{{ route.path === "/login" ? "登录聚发舟" : "注册聚发舟" }}</h1>
+      <img src="/figures/聚发舟.png" alt="聚舟" />
+      <h1>{{ route.path === "/login" ? "登录聚舟" : "注册聚舟" }}</h1>
       <p>MultiPost AI 多平台内容发布工作台</p>
 
       <label v-if="route.path === '/register'">
@@ -35,9 +35,9 @@
   <div v-else class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <img class="brand-logo" src="/figures/聚发舟.png" alt="聚发舟" />
+        <img class="brand-logo" src="/figures/聚发舟.png" alt="聚舟" />
         <div>
-          <strong>聚发舟</strong>
+          <strong>聚舟</strong>
           <span>MultiPost AI</span>
         </div>
       </div>
@@ -103,13 +103,52 @@
         </div>
       </div>
       <div class="top-actions">
-        <button class="icon-btn" type="button" title="主题">☼</button>
-        <button class="icon-btn bell" type="button" title="通知" aria-label="通知">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-          </svg>
-        </button>
+        <div class="top-popover-wrap">
+          <button class="icon-btn theme-trigger" type="button" title="主题" @click="toggleThemeMenu">
+            <span>☼</span>
+          </button>
+          <div v-if="themeMenuVisible" class="top-popover theme-popover">
+            <button
+              v-for="item in themeOptions"
+              :key="item.value"
+              type="button"
+              :class="{ active: themeMode === item.value }"
+              @click="setThemeMode(item.value)"
+            >
+              <span>{{ item.icon }}</span>
+              <strong>{{ item.label }}</strong>
+            </button>
+          </div>
+        </div>
+        <div class="top-popover-wrap">
+          <button class="icon-btn bell" type="button" title="通知" aria-label="通知" @click="toggleNotificationPanel">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+              <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+            </svg>
+            <i v-if="unreadNotifications">{{ unreadNotifications }}</i>
+          </button>
+          <div v-if="notificationPanelVisible" class="top-popover notification-popover">
+            <div class="notification-head">
+              <strong>通知中心</strong>
+              <button v-if="notifications.length" type="button" @click="markAllNotificationsRead">全部已读</button>
+            </div>
+            <div v-if="!notifications.length" class="notification-empty">暂无新通知</div>
+            <button
+              v-for="item in notifications"
+              :key="item.id"
+              class="notification-item"
+              :class="[item.type, { unread: !item.read }]"
+              type="button"
+              @click="markNotificationRead(item.id)"
+            >
+              <b>{{ item.type === "failed" ? "!" : "✓" }}</b>
+              <span>{{ item.title }}</span>
+              <p>{{ item.message }}</p>
+              <small>{{ item.time }}</small>
+            </button>
+          </div>
+        </div>
         <div class="profile">
           <div class="avatar">{{ username.slice(0, 1) || "明" }}</div>
           <div>
@@ -190,24 +229,123 @@
     <div v-if="recordDetailVisible" class="drawer-mask" @click.self="recordDetailVisible = false">
       <section class="record-drawer">
         <button class="dialog-close" type="button" @click="recordDetailVisible = false">×</button>
-        <h2>{{ selectedRecord?.task_title || "发布详情" }}</h2>
+        <h2>发布详情</h2>
         <div class="detail-meta">
-          <span>发布时间：{{ selectedRecord?.publish_time || "-" }}</span>
-          <span>发布模式：{{ selectedRecord?.publish_mode || "mock" }}</span>
-          <span>状态：{{ selectedRecord?.status || "success" }}</span>
-          <span>平台数：{{ selectedRecord?.platform_contents?.length || 0 }}</span>
+          <span><b>任务标题</b>{{ selectedRecord?.task_title || "-" }}</span>
+          <span><b>发布平台</b>{{ detailPlatformNames(selectedRecord).join("、") || "-" }}</span>
+          <span><b>发布时间</b>{{ formatPublishTime(selectedRecord?.publish_time) }}</span>
+          <span><b>状态</b>{{ detailStatusLabel(selectedRecord?.status) }}</span>
+          <span><b>模拟发布ID</b>{{ selectedRecord?.mock_publish_id || "-" }}</span>
         </div>
-        <p class="source-text">{{ selectedRecord?.source_content || form.content }}</p>
-        <div class="detail-platforms">
-          <article v-for="item in selectedRecord?.platform_contents || []" :key="item.platform" class="detail-card">
-            <h3>{{ platformName(item.platform) }}</h3>
-            <strong>{{ item.title }}</strong>
-            <p>{{ item.content || item.description }}</p>
-            <div class="preview-tags">
-              <span v-for="tag in normalizeTags(item.tags)" :key="tag">#{{ tag }}</span>
-            </div>
-            <small>状态：{{ item.status || selectedRecord?.status || "success" }}</small>
-          </article>
+        <section class="detail-section">
+          <h3>帖子标题</h3>
+          <strong class="detail-post-title">{{ detailPrimaryContent(selectedRecord)?.title || selectedRecord?.task_title || "-" }}</strong>
+        </section>
+        <section class="detail-section">
+          <h3>正文</h3>
+          <p class="source-text">{{ detailPrimaryContent(selectedRecord)?.content || detailPrimaryContent(selectedRecord)?.description || selectedRecord?.source_content || "-" }}</p>
+        </section>
+        <section class="detail-section">
+          <h3>标签</h3>
+          <div class="preview-tags detail-tags">
+            <span v-for="tag in detailTags(selectedRecord)" :key="tag">#{{ tag }}</span>
+            <small v-if="!detailTags(selectedRecord).length">暂无标签</small>
+          </div>
+        </section>
+        <section class="detail-section">
+          <h3>素材列表</h3>
+          <div v-if="detailMaterials(selectedRecord).length" class="detail-materials">
+            <a v-for="item in detailMaterials(selectedRecord)" :key="item.key" :href="item.url" target="_blank" rel="noreferrer">
+              <span>{{ item.type }}</span>
+              <strong>{{ item.name }}</strong>
+            </a>
+          </div>
+          <div v-else class="detail-empty">暂无素材</div>
+        </section>
+      </section>
+    </div>
+
+    <div v-if="deleteConfirmVisible" class="dialog-mask" @click.self="closeDeleteConfirm">
+      <section class="confirm-dialog">
+        <button class="dialog-close" type="button" @click="closeDeleteConfirm">×</button>
+        <div class="confirm-icon">!</div>
+        <h2>删除发布记录</h2>
+        <p>确认删除这条发布记录吗？当前是模拟发布，只会删除本地系统记录，不涉及真实平台帖子。</p>
+        <strong>{{ pendingDeleteRecord?.title || pendingDeleteRecord?.task_title || "未命名发布记录" }}</strong>
+        <div class="confirm-actions">
+          <button class="ghost-btn" type="button" @click="closeDeleteConfirm">取消</button>
+          <button class="danger-confirm-btn" type="button" @click="confirmDeletePublishRecord">确认删除</button>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="aiConfigVisible" class="dialog-mask" @click.self="closeAiConfig">
+      <section class="ai-config-dialog">
+        <button class="dialog-close" type="button" @click="closeAiConfig">×</button>
+        <div class="sample-dialog-head">
+          <h2>{{ currentProvider?.label || "模型配置" }}</h2>
+          <p>配置会保存到后端数据库，内容创作页会读取当前默认模型生成多平台内容。</p>
+        </div>
+        <div class="settings-grid">
+          <label v-if="currentProvider?.needsKey" class="setting-field">
+            <span>API Key</span>
+            <input v-model="aiSettings[providerField(configProvider, 'key')]" type="password" placeholder="请输入 API Key" />
+          </label>
+          <label v-if="currentProvider?.hasBaseUrl" class="setting-field">
+            <span>Base URL</span>
+            <input v-model="aiSettings[providerField(configProvider, 'baseUrl')]" placeholder="请输入 Base URL" />
+          </label>
+          <label class="setting-field">
+            <span>模型名</span>
+            <input v-model="aiSettings[providerField(configProvider, 'model')]" placeholder="请输入模型名" />
+          </label>
+          <label class="setting-field">
+            <span>创作随机度</span>
+            <input v-model.number="aiSettings[providerField(configProvider, 'temperature')]" type="number" min="0" max="2" step="0.1" />
+            <small>越低越稳定，越高越有创意，推荐 0.7。</small>
+          </label>
+          <label class="setting-field">
+            <span>最大输出长度</span>
+            <input v-model.number="aiSettings[providerField(configProvider, 'maxTokens')]" type="number" min="1" step="1" />
+            <small>控制单次生成内容长度，推荐 2000。</small>
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button class="ghost-btn" type="button" @click="setDefaultProvider(configProvider)">设为默认模型</button>
+          <button class="ghost-btn" type="button" :disabled="loading.settings" @click="testModelConnection(configProvider)">
+            {{ loading.settings ? "测试中..." : "测试连接" }}
+          </button>
+          <button class="primary-btn" type="button" :disabled="loading.settings" @click="saveAiSettings">
+            保存配置
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="authDialogVisible" class="dialog-mask" @click.self="closeOfficialAuth">
+      <section class="official-auth-dialog">
+        <button class="dialog-close" type="button" @click="closeOfficialAuth">×</button>
+        <div class="sample-dialog-head">
+          <h2>{{ platformName(authPlatformId) }} 官方授权</h2>
+          <p>当前为授权流程预留入口，可扫码或输入账号密码模拟登录真实平台账号。</p>
+        </div>
+        <div class="auth-dialog-body">
+          <div class="mock-qr">
+            <span></span>
+            <strong>模拟二维码</strong>
+            <small>请使用对应平台 App 扫码</small>
+          </div>
+          <div class="auth-form">
+            <label>
+              账号
+              <input v-model="platformLoginForm.account" placeholder="请输入平台账号" />
+            </label>
+            <label>
+              密码
+              <input v-model="platformLoginForm.password" type="password" placeholder="请输入平台密码" />
+            </label>
+            <button class="primary-btn" type="button" @click="submitOfficialAuth">模拟登录真实账号</button>
+          </div>
         </div>
       </section>
     </div>
@@ -228,6 +366,17 @@ const coverInput = ref(null);
 const materialFilter = ref("all");
 const recordDetailVisible = ref(false);
 const selectedRecord = ref(null);
+const deleteConfirmVisible = ref(false);
+const pendingDeleteRecord = ref(null);
+const themeMode = ref(localStorage.getItem("themeMode") || "system");
+const themeMenuVisible = ref(false);
+const notificationPanelVisible = ref(false);
+const notifications = ref(JSON.parse(localStorage.getItem("notifications") || "[]"));
+const aiConfigVisible = ref(false);
+const configProvider = ref("openai");
+const authDialogVisible = ref(false);
+const authPlatformId = ref("wechat");
+const platformLoginForm = reactive({ account: "", password: "" });
 
 const authForm = reactive({ name: "", account: "", password: "", confirm: "" });
 const authError = ref("");
@@ -248,7 +397,7 @@ const taskId = ref(null);
 const loading = reactive({ adapt: false, publish: false, records: false, materials: false, settings: false });
 const publishResults = ref([]);
 const adapted = reactive({});
-const materials = ref(JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]"));
+const materials = ref([]);
 const history = ref([]);
 const coverPlaceholder = "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=900&q=80";
 
@@ -257,16 +406,31 @@ const aiSettings = reactive({
   openaiKey: "",
   openaiBaseUrl: "https://api.openai.com/v1",
   openaiModel: "gpt-4o-mini",
+  openaiTemperature: 0.7,
+  openaiMaxTokens: 2000,
   qwenKey: "",
   qwenBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   qwenModel: "qwen-plus",
+  qwenTemperature: 0.7,
+  qwenMaxTokens: 2000,
   geminiKey: "",
   geminiModel: "gemini-1.5-flash",
+  geminiTemperature: 0.7,
+  geminiMaxTokens: 2000,
   deepseekKey: "",
   deepseekBaseUrl: "https://api.deepseek.com",
   deepseekModel: "deepseek-chat",
+  deepseekTemperature: 0.7,
+  deepseekMaxTokens: 2000,
   ollamaBaseUrl: "http://localhost:11434",
   ollamaModel: "qwen2.5:7b",
+  ollamaTemperature: 0.7,
+  ollamaMaxTokens: 2000,
+  localKey: "local",
+  localBaseUrl: "http://127.0.0.1:8000/v1",
+  localModel: "local-model",
+  localTemperature: 0.7,
+  localMaxTokens: 2000,
   defaultLang: outputLang.value,
   defaultIntensity: aiIntensity.value
 });
@@ -279,8 +443,8 @@ const platforms = [
 ];
 
 const accounts = reactive({
-  wechat: { loggedIn: true, accountName: "测试公众号账号", authType: "Mock Token", expireAt: "2026-12-31" },
-  zhihu: { loggedIn: true, accountName: "知乎创作者", authType: "Mock Token", expireAt: "2026-12-31" },
+  wechat: { loggedIn: false, accountName: "", authType: "未授权", expireAt: "-" },
+  zhihu: { loggedIn: false, accountName: "", authType: "未授权", expireAt: "-" },
   bilibili: { loggedIn: false, accountName: "", authType: "未授权", expireAt: "-" },
   xiaohongshu: { loggedIn: false, accountName: "", authType: "未授权", expireAt: "-" }
 });
@@ -324,12 +488,18 @@ const morePlatforms = [
 ];
 
 const providers = [
-  { value: "openai", label: "OpenAI (gpt-4o-mini)" },
-  { value: "gemini", label: "Gemini" },
-  { value: "qwen", label: "Qwen" },
-  { value: "deepseek", label: "DeepSeek" },
-  { value: "ollama", label: "Ollama" },
-  { value: "local", label: "Local" }
+  { value: "openai", label: "OpenAI", description: "OpenAI 官方与兼容接口", hasBaseUrl: true, needsKey: true },
+  { value: "qwen", label: "Qwen", description: "阿里云百炼 OpenAI Compatible", hasBaseUrl: true, needsKey: true },
+  { value: "gemini", label: "Gemini", description: "Google Gemini 模型", hasBaseUrl: false, needsKey: true },
+  { value: "deepseek", label: "DeepSeek", description: "DeepSeek OpenAI Compatible", hasBaseUrl: true, needsKey: true },
+  { value: "ollama", label: "Ollama", description: "本地 Ollama 服务", hasBaseUrl: true, needsKey: false },
+  { value: "local", label: "Local", description: "本地 OpenAI Compatible 服务", hasBaseUrl: true, needsKey: false }
+];
+
+const themeOptions = [
+  { value: "light", label: "亮色模式", icon: "☼" },
+  { value: "dark", label: "深色模式", icon: "●" },
+  { value: "system", label: "跟随系统", icon: "◐" }
 ];
 
 const rewriteModes = [
@@ -404,6 +574,9 @@ const parsedTags = computed(() =>
 );
 const selectedPlatforms = computed(() => platforms.filter((platform) => form.platforms.includes(platform.id)));
 const previewList = computed(() => selectedPlatforms.value.map((platform) => ({ ...platform, content: adapted[platform.id] })).filter((item) => item.content));
+const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read).length);
+const defaultProvider = computed(() => providers.find((provider) => provider.value === aiSettings.provider) || providers[0]);
+const currentProvider = computed(() => providers.find((provider) => provider.value === configProvider.value) || providers[0]);
 const filteredMaterials = computed(() => (materialFilter.value === "all" ? materials.value : materials.value.filter((item) => item.type === materialFilter.value)));
 const materialStats = computed(() => {
   const totalSize = materials.value.reduce((sum, item) => sum + (item.size || 0), 0);
@@ -427,7 +600,11 @@ function page(render) {
 
 const DashboardView = page(() => [
   h("article", { class: "panel dashboard-hero" }, [
-    h("div", [h("h2", "工作台"), h("p", "查看发布、素材、模型和平台账号的整体状态。")]),
+    h("div", { class: "dashboard-copy" }, [
+      h("span", "MultiPost AI"),
+      h("h2", "工作台"),
+      h("p", "集中查看发布、素材、模型和平台账号状态，快速进入下一步创作。")
+    ]),
     h("div", { class: "quick-actions" }, [
       h("button", { class: "primary-btn", onClick: () => router.push("/content") }, "新建创作"),
       h("button", { class: "ghost-btn", onClick: () => router.push("/records") }, "查看记录"),
@@ -440,11 +617,15 @@ const DashboardView = page(() => [
     metric("AI 模型", providerLabel(form.llmProvider), "当前默认生成模型"),
     metric("账号状态", `${Object.values(accounts).filter((item) => item.loggedIn).length}/4`, "已模拟登录平台")
   ]),
-  h("article", { class: "panel" }, [
+  h("article", { class: "panel dashboard-records" }, [
     h("div", { class: "panel-head compact" }, [h("div", [h("h2", "最近发布记录"), h("p", "点击记录可查看完整帖子内容。")])]),
     history.value.length
       ? h("div", { class: "record-list" }, history.value.slice(0, 5).map((record) => recordRow(record)))
-      : h("div", { class: "empty-state" }, "暂无发布记录。")
+      : h("div", { class: "dashboard-empty" }, [
+          h("strong", "暂无发布记录"),
+          h("p", "完成一次模拟发布后，这里会展示最新发布动态。"),
+          h("button", { class: "primary-outline", onClick: () => router.push("/content") }, "去内容创作")
+        ])
   ])
 ]);
 
@@ -486,11 +667,25 @@ const RecordsView = page(() => [
       h("button", { class: "ghost-btn", onClick: loadRecords }, "刷新")
     ]),
     history.value.length
-      ? h("div", { class: "record-table" }, [
-          h("div", { class: "record-head" }, [h("span", "发布时间"), h("span", "任务标题"), h("span", "发布平台"), h("span", "状态"), h("span", "操作")]),
-          ...history.value.map((record) => recordRow(record, true))
+      ? h("div", { class: "record-table-wrap" }, [
+          h("table", { class: "record-table" }, [
+            h("thead", [
+              h("tr", [
+                h("th", "发布时间"),
+                h("th", "任务标题"),
+                h("th", "发布平台"),
+                h("th", "状态"),
+                h("th", "操作")
+              ])
+            ]),
+            h("tbody", history.value.map((record) => recordRow(record, true)))
+          ])
         ])
-      : h("div", { class: "empty-state" }, "暂无发布记录。")
+      : h("div", { class: "records-empty" }, [
+          h("strong", "暂无发布记录"),
+          h("p", "完成一次模拟发布后，发布记录会显示在这里。"),
+          h("button", { class: "primary-outline", type: "button", onClick: () => router.push("/content") }, "去内容创作")
+        ])
   ])
 ]);
 
@@ -510,7 +705,7 @@ const AccountsView = page(() => [
         h("div", { class: "card-actions" }, [
           h("button", { class: "ghost-btn small", onClick: () => mockLogin(platform.id) }, account.loggedIn ? "重新登录" : "模拟登录"),
           h("button", { class: "ghost-btn small", onClick: () => logoutPlatform(platform.id) }, "退出登录"),
-          h("button", { class: "ghost-btn small" }, "官方授权预留")
+          h("button", { class: "ghost-btn small", onClick: () => openOfficialAuth(platform.id) }, "官方授权预留")
         ])
       ]);
     }))
@@ -540,28 +735,23 @@ const MaterialsView = page(() => [
 
 const SettingsView = page(() => [
   h("article", { class: "panel settings-panel" }, [
-    h("div", { class: "panel-head" }, [h("div", [h("h2", "AI 设置中心"), h("p", "配置全局模型 API Key、Base URL 和默认生成参数。")])]),
-    h("div", { class: "settings-grid" }, [
-      settingSelect("默认模型", "provider", providers),
-      settingInput("OpenAI API Key", "openaiKey", true),
-      settingInput("OpenAI Base URL", "openaiBaseUrl"),
-      settingInput("OpenAI Model", "openaiModel"),
-      settingInput("Qwen API Key", "qwenKey", true),
-      settingInput("Qwen Base URL", "qwenBaseUrl"),
-      settingInput("Qwen Model", "qwenModel"),
-      settingInput("Gemini API Key", "geminiKey", true),
-      settingInput("Gemini Model", "geminiModel"),
-      settingInput("DeepSeek API Key", "deepseekKey", true),
-      settingInput("DeepSeek Base URL", "deepseekBaseUrl"),
-      settingInput("DeepSeek Model", "deepseekModel"),
-      settingInput("Ollama Base URL", "ollamaBaseUrl"),
-      settingInput("Ollama Model", "ollamaModel"),
-      settingSelect("默认语言", "defaultLang", [{ value: "zh", label: "中文" }, { value: "en", label: "English" }]),
-      settingSelect("默认改写强度", "defaultIntensity", rewriteModes)
+    h("div", { class: "panel-head" }, [h("div", [h("h2", "AI 设置中心"), h("p", "管理多模型配置，内容创作页会优先读取当前默认模型。")])]),
+    h("section", { class: "default-model-card" }, [
+      h("span", "当前默认模型"),
+      h("strong", `${defaultProvider.value.label} / ${aiSettings[providerField(defaultProvider.value.value, "model")] || "-"}`),
+      h("small", providerConnectionText(defaultProvider.value.value))
     ]),
-    h("div", { class: "settings-actions" }, [
-      h("button", { class: "ghost-btn", disabled: loading.settings, onClick: testModelConnection }, loading.settings ? "测试中..." : "测试连接"),
-      h("button", { class: "primary-btn", onClick: saveAiSettings }, "保存设置")
+    h("div", { class: "ai-provider-grid" }, providers.map((provider) => providerCard(provider))),
+    h("section", { class: "settings-preferences" }, [
+      h("div", [
+        h("h3", "全局偏好"),
+        h("p", "用于内容创作页的一键生成默认参数。")
+      ]),
+      h("div", { class: "settings-preference-fields" }, [
+        settingSelect("默认语言", "defaultLang", [{ value: "zh", label: "中文" }, { value: "en", label: "English" }]),
+        settingSelect("默认改写强度", "defaultIntensity", rewriteModes),
+        h("button", { class: "primary-btn", onClick: saveAiSettings }, "保存全局设置")
+      ])
     ]),
     notice.value ? h("p", { class: "notice" }, notice.value) : null
   ])
@@ -616,7 +806,15 @@ const TipsPanel = page(() => [
 ]);
 
 function metric(label, value, hint) {
-  return h("div", { class: "metric-card" }, [h("span", label), h("strong", value), h("small", hint)]);
+  return h("div", { class: "metric-card" }, [h("i", metricIcon(label)), h("span", label), h("strong", value), h("small", hint)]);
+}
+
+function metricIcon(label) {
+  if (label.includes("发布")) return "↗";
+  if (label.includes("素材")) return "▧";
+  if (label.includes("AI")) return "✦";
+  if (label.includes("账号")) return "♙";
+  return "•";
 }
 
 function overviewRow(label, value) {
@@ -745,14 +943,16 @@ function previewCard(item) {
 function recordRow(record, table = false) {
   const open = () => openRecordDetail(record);
   if (table) {
-    return h("div", { class: "record-row table", onClick: open }, [
-      h("span", { class: "record-time" }, formatPublishTime(record.publish_time)),
-      h("strong", { class: "record-title", title: record.title || form.title }, record.title || form.title),
-      h("span", { class: "record-platform" }, platformName(record.platform || record.id)),
-      h("span", { class: "record-status" }, publishStatusTags(record)),
-      h("span", { class: "record-action" }, [
-        h("button", { class: "ghost-btn small", onClick: (event) => { event.stopPropagation(); open(); } }, "查看详情"),
-        h("button", { class: "danger-btn small", onClick: (event) => { event.stopPropagation(); deletePublishRecord(record); } }, "删除")
+    return h("tr", { class: "record-tr", onClick: open }, [
+      h("td", { class: "record-time" }, formatPublishTime(record.publish_time)),
+      h("td", [h("strong", { class: "record-title", title: record.title || form.title }, record.title || form.title || "-")]),
+      h("td", [h("span", { class: "platform-tag" }, platformName(record.platform || record.id))]),
+      h("td", [h("span", { class: "record-status" }, publishStatusTags(record))]),
+      h("td", [
+        h("span", { class: "record-action" }, [
+          h("button", { class: "table-action-btn", onClick: (event) => { event.stopPropagation(); open(); } }, "详情"),
+          h("button", { class: "table-action-btn danger", onClick: (event) => { event.stopPropagation(); openDeleteConfirm(record); } }, "删除")
+        ])
       ])
     ]);
   }
@@ -774,6 +974,91 @@ function materialCard(item) {
       h("button", { class: "ghost-btn small", onClick: () => copyText(item.url) }, "复制链接"),
       h("button", { class: "ghost-btn small", onClick: () => addMaterialToCurrentTask(item) }, "加入创作"),
       h("button", { class: "ghost-btn small", onClick: () => removeMaterial(item) }, "删除")
+    ])
+  ]);
+}
+
+function providerField(provider, field) {
+  return `${provider}${field[0].toUpperCase()}${field.slice(1)}`;
+}
+
+function providerConnectionText(provider) {
+  const model = aiSettings[providerField(provider, "model")] || "未配置模型";
+  const baseUrl = aiSettings[providerField(provider, "baseUrl")];
+  const key = aiSettings[providerField(provider, "key")];
+  if (["ollama", "local"].includes(provider)) return baseUrl ? `本地服务：${baseUrl}` : model;
+  return key ? "API Key 已填写" : "API Key 未填写";
+}
+
+function accountStorageKey() {
+  return `platformAccounts:${username.value || "guest"}`;
+}
+
+function saveLocalAccounts() {
+  localStorage.setItem(accountStorageKey(), JSON.stringify(accounts));
+}
+
+function resetAccounts() {
+  Object.values(accounts).forEach((account) => {
+    account.loggedIn = false;
+    account.accountName = "";
+    account.authType = "未授权";
+    account.expireAt = "-";
+  });
+}
+
+function loadLocalAccounts() {
+  resetAccounts();
+  const saved = localStorage.getItem(accountStorageKey());
+  if (!saved) return;
+  try {
+    const data = JSON.parse(saved);
+    Object.entries(data).forEach(([platform, account]) => {
+      if (!accounts[platform]) return;
+      Object.assign(accounts[platform], account);
+    });
+  } catch (error) {
+    resetAccounts();
+  }
+}
+
+function openAiConfig(provider) {
+  configProvider.value = provider;
+  aiConfigVisible.value = true;
+}
+
+function closeAiConfig() {
+  aiConfigVisible.value = false;
+}
+
+function setDefaultProvider(provider) {
+  aiSettings.provider = provider;
+  form.llmProvider = provider;
+  notice.value = `已设为默认模型：${providerLabel(provider)}`;
+}
+
+function providerCard(provider) {
+  const isDefault = aiSettings.provider === provider.value;
+  return h("section", { class: ["ai-provider-card", { active: isDefault }] }, [
+    h("div", { class: "ai-provider-head" }, [
+      h("div", [
+        h("h3", provider.label),
+        h("p", provider.description)
+      ]),
+      isDefault ? h("span", "默认") : null
+    ]),
+    h("dl", [
+      h("dt", "模型"),
+      h("dd", aiSettings[providerField(provider.value, "model")] || "-"),
+      h("dt", "Base URL"),
+      h("dd", provider.hasBaseUrl ? aiSettings[providerField(provider.value, "baseUrl")] || "-" : "官方 SDK"),
+      h("dt", "参数"),
+      h("dd", `随机度 ${aiSettings[providerField(provider.value, "temperature")] ?? 0.7} / 输出 ${aiSettings[providerField(provider.value, "maxTokens")] || 2000}`)
+    ]),
+    h("div", { class: "card-actions" }, [
+      h("button", { class: "ghost-btn small", onClick: () => openAiConfig(provider.value) }, "配置"),
+      h("button", { class: "ghost-btn small", onClick: () => setDefaultProvider(provider.value) }, "设为默认"),
+      h("button", { class: "ghost-btn small", disabled: loading.settings, onClick: () => testModelConnection(provider.value) }, "测试连接")
     ])
   ]);
 }
@@ -847,7 +1132,7 @@ function applyLogin(data) {
 
 async function afterAuth() {
   history.value = [];
-  materials.value = JSON.parse(localStorage.getItem(`materials:${username.value}`) || "[]");
+  materials.value = [];
   await Promise.all([loadRecords(), loadMaterials(), loadAiSettings(), loadAccounts()]);
   router.push("/dashboard");
 }
@@ -895,6 +1180,66 @@ function togglePlatform(id) {
   form.platforms = form.platforms.includes(id) ? form.platforms.filter((item) => item !== id) : [...form.platforms, id];
 }
 
+function effectiveTheme(mode = themeMode.value) {
+  if (mode === "system") {
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  return mode;
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = effectiveTheme();
+}
+
+function toggleThemeMenu() {
+  themeMenuVisible.value = !themeMenuVisible.value;
+  notificationPanelVisible.value = false;
+}
+
+function setThemeMode(mode) {
+  themeMode.value = mode;
+  localStorage.setItem("themeMode", mode);
+  applyTheme();
+  themeMenuVisible.value = false;
+}
+
+function toggleNotificationPanel() {
+  notificationPanelVisible.value = !notificationPanelVisible.value;
+  themeMenuVisible.value = false;
+}
+
+function saveNotifications() {
+  localStorage.setItem("notifications", JSON.stringify(notifications.value.slice(0, 30)));
+}
+
+function addNotification(type, title, message) {
+  notifications.value = [
+    {
+      id: Date.now() + Math.random(),
+      type,
+      title,
+      message,
+      time: formatPublishTime(new Date()),
+      read: false
+    },
+    ...notifications.value
+  ].slice(0, 30);
+  saveNotifications();
+}
+
+function markNotificationRead(id) {
+  const item = notifications.value.find((notification) => notification.id === id);
+  if (item) item.read = true;
+  saveNotifications();
+}
+
+function markAllNotificationsRead() {
+  notifications.value.forEach((item) => {
+    item.read = true;
+  });
+  saveNotifications();
+}
+
 function applySample() {
   sampleDialogVisible.value = true;
 }
@@ -917,6 +1262,47 @@ function normalizeTags(tags) {
 
 function platformName(id) {
   return platforms.find((platform) => platform.id === id)?.name || id;
+}
+
+function detailPrimaryContent(record) {
+  const contents = record?.platform_contents || [];
+  if (!contents.length) return null;
+  return contents.find((item) => item.platform === record?.platform) || contents[0];
+}
+
+function detailPlatformNames(record) {
+  const ids = record?.platform
+    ? [record.platform]
+    : record?.platforms || (record?.platform_contents || []).map((item) => item.platform);
+  return [...new Set((ids || []).filter(Boolean))].map(platformName);
+}
+
+function detailStatusLabel(status) {
+  return status === "failed" ? "失败" : "成功";
+}
+
+function detailTags(record) {
+  return normalizeTags(detailPrimaryContent(record)?.tags || []);
+}
+
+function materialFileName(url) {
+  if (!url) return "-";
+  return String(url).split("/").filter(Boolean).pop() || String(url);
+}
+
+function detailMaterials(record) {
+  const content = detailPrimaryContent(record) || {};
+  const items = [];
+  (content.images || []).forEach((url, index) => {
+    items.push({ key: `image-${index}-${url}`, type: "图片", name: materialFileName(url), url });
+  });
+  (content.videos || []).forEach((url, index) => {
+    items.push({ key: `video-${index}-${url}`, type: "视频", name: materialFileName(url), url });
+  });
+  if (content.cover) {
+    items.push({ key: `cover-${content.cover}`, type: "封面", name: materialFileName(content.cover), url: content.cover });
+  }
+  return items;
 }
 
 function providerLabel(id) {
@@ -993,7 +1379,6 @@ function upsertMaterial(item) {
   const exists = materials.value.some((material) => material.url === item.url);
   if (!exists) {
     materials.value.unshift({ ...item });
-    localStorage.setItem(`materials:${username.value || "guest"}`, JSON.stringify(materials.value));
   }
 }
 
@@ -1060,7 +1445,9 @@ function removeMedia(type, index) {
 
 function removeMaterial(item) {
   materials.value = materials.value.filter((material) => material.id !== item.id && material.url !== item.url);
-  localStorage.setItem(`materials:${username.value || "guest"}`, JSON.stringify(materials.value));
+  if (!String(item.id || "").startsWith("local-")) {
+    apiRequest(`/api/materials/${item.id}`, { method: "DELETE" }).catch(() => {});
+  }
 }
 
 function addMaterialToCurrentTask(item) {
@@ -1071,7 +1458,6 @@ function addMaterialToCurrentTask(item) {
     target.push(item);
   }
   item.usage_count = (item.usage_count || 0) + 1;
-  localStorage.setItem(`materials:${username.value || "guest"}`, JSON.stringify(materials.value));
   notice.value = "素材已加入当前创作任务。";
 }
 
@@ -1135,6 +1521,7 @@ async function generateContent() {
   try {
     const response = await apiRequest("/api/content/generate", {
       method: "POST",
+      timeout: 45000,
       body: JSON.stringify({
         title: form.title,
         content: form.content,
@@ -1152,11 +1539,20 @@ async function generateContent() {
     });
     taskId.value = response?.task_id || Date.now();
     Object.assign(adapted, response?.code === 200 && response.data ? response.data : buildLocalPreview());
-    if (response?.code !== 200) notice.value = "后端未返回有效结果，已使用本地规则生成预览。";
+    if (response?.ai_fallback) {
+      notice.value = response.message || "大模型调用失败，已使用本地规则模板生成预览。";
+      addNotification("failed", "AI 已降级", notice.value);
+    } else if (response?.code !== 200) {
+      notice.value = response?.message || "后端未返回有效结果，已使用本地规则生成预览。";
+      addNotification("failed", "AI 调用失败", notice.value);
+    } else {
+      addNotification("success", "AI 生成成功", `已生成 ${form.platforms.length} 个平台版本。`);
+    }
   } catch (error) {
     taskId.value = Date.now();
     Object.assign(adapted, buildLocalPreview());
-    notice.value = "未连接到后端服务，已使用本地演示数据生成预览。";
+    notice.value = error?.name === "AbortError" ? "AI 生成超时，已使用本地规则模板生成预览。" : "未连接到后端服务，已使用本地演示数据生成预览。";
+    addNotification("failed", "AI 调用失败", notice.value);
   } finally {
     loading.adapt = false;
     router.push("/preview");
@@ -1170,25 +1566,76 @@ async function mockLogin(platformId) {
   accounts[platformId].authType = "Mock Token";
   accounts[platformId].expireAt = "2026-12-31";
   try {
-    await apiRequest("/api/account/mock-login", {
+    const response = await apiRequest("/api/account/mock-login", {
       method: "POST",
       body: JSON.stringify({ platform: platformId, account_name: accounts[platformId].accountName })
     });
+    if (response?.code === 200) {
+      saveLocalAccounts();
+    } else {
+      notice.value = response?.message || "后端账号登录保存失败，已保留本地登录状态。";
+      saveLocalAccounts();
+    }
   } catch (error) {
     // 离线演示允许模拟登录成功。
+    saveLocalAccounts();
   }
 }
 
 function logoutPlatform(platformId) {
   accounts[platformId].loggedIn = false;
   accounts[platformId].authType = "未授权";
+  accounts[platformId].accountName = "";
   accounts[platformId].expireAt = "-";
+  saveLocalAccounts();
+  apiRequest("/api/account/logout", {
+    method: "POST",
+    body: JSON.stringify({ platform: platformId })
+  }).catch(() => {});
+}
+
+function openOfficialAuth(platformId) {
+  authPlatformId.value = platformId;
+  platformLoginForm.account = accounts[platformId].accountName || "";
+  platformLoginForm.password = "";
+  authDialogVisible.value = true;
+}
+
+function closeOfficialAuth() {
+  authDialogVisible.value = false;
+}
+
+async function submitOfficialAuth() {
+  const platform = platforms.find((item) => item.id === authPlatformId.value);
+  accounts[authPlatformId.value].loggedIn = true;
+  accounts[authPlatformId.value].accountName = platformLoginForm.account || `${platform?.name || authPlatformId.value}账号`;
+  accounts[authPlatformId.value].authType = "Official OAuth";
+  accounts[authPlatformId.value].expireAt = "2026-12-31";
+  try {
+    const response = await apiRequest("/api/account/mock-login", {
+      method: "POST",
+      body: JSON.stringify({ platform: authPlatformId.value, account_name: accounts[authPlatformId.value].accountName })
+    });
+    if (response?.code !== 200) {
+      notice.value = response?.message || "后端账号授权保存失败，已保留本地授权状态。";
+    }
+  } catch (error) {
+    // 保留前端模拟授权状态。
+  }
+  saveLocalAccounts();
+  closeOfficialAuth();
 }
 
 async function publishAll() {
   notice.value = "";
   if (!previewList.value.length) {
     notice.value = "请先生成各平台预览内容。";
+    return;
+  }
+  const offlinePlatforms = selectedPlatforms.value.filter((platform) => !accounts[platform.id]?.loggedIn);
+  if (offlinePlatforms.length) {
+    notice.value = `以下平台未登录，无法发布：${offlinePlatforms.map((platform) => platform.name).join("、")}`;
+    addNotification("failed", "发布失败", notice.value);
     return;
   }
   loading.publish = true;
@@ -1203,9 +1650,15 @@ async function publishAll() {
       })
     });
     publishResults.value = response?.code === 200 ? response.data || [] : [];
+    if (response?.code === 200) {
+      addNotification("success", "模拟发布成功", `已生成 ${publishResults.value.length || form.platforms.length} 条发布记录。`);
+    } else {
+      addNotification("failed", "发布失败", response?.message || "模拟发布未成功。");
+    }
   } catch (error) {
     publishResults.value = [];
     notice.value = "模拟发布失败，未生成发布记录。";
+    addNotification("failed", "发布失败", "模拟发布失败，未生成发布记录。");
   } finally {
     await loadRecords();
     loading.publish = false;
@@ -1216,11 +1669,13 @@ async function publishAll() {
 function buildLocalRecordDetail(record) {
   return {
     id: record?.id || Date.now(),
+    platform: record?.platform,
     task_title: form.title,
     source_content: form.content,
     publish_time: record?.publish_time || new Date().toLocaleString(),
     publish_mode: "mock",
     status: record?.status || "success",
+    mock_publish_id: record?.mock_publish_id || null,
     platform_contents: selectedPlatforms.value.map((platform) => ({
       platform: platform.id,
       ...(adapted[platform.id] || {}),
@@ -1241,14 +1696,25 @@ async function openRecordDetail(record) {
   }
 }
 
-async function deletePublishRecord(record) {
+function openDeleteConfirm(record) {
+  pendingDeleteRecord.value = record;
+  deleteConfirmVisible.value = true;
+}
+
+function closeDeleteConfirm() {
+  deleteConfirmVisible.value = false;
+  pendingDeleteRecord.value = null;
+}
+
+async function confirmDeletePublishRecord() {
+  const record = pendingDeleteRecord.value;
+  if (!record) return;
   const recordId = Number(record.id);
   if (!Number.isInteger(recordId)) {
     history.value = history.value.filter((item) => item.id !== record.id);
+    closeDeleteConfirm();
     return;
   }
-  const confirmed = window.confirm("确认删除这条发布记录吗？当前是模拟发布，只会删除本地系统记录，不涉及真实平台帖子。");
-  if (!confirmed) return;
   try {
     const response = await apiRequest(`/api/records/${recordId}`, { method: "DELETE" });
     if (response?.code !== 200) {
@@ -1259,6 +1725,7 @@ async function deletePublishRecord(record) {
       recordDetailVisible.value = false;
       selectedRecord.value = null;
     }
+    closeDeleteConfirm();
     await loadRecords();
   } catch (error) {
     notice.value = "删除发布记录失败，请检查后端服务。";
@@ -1282,27 +1749,29 @@ async function loadMaterials() {
   try {
     const response = await apiRequest("/api/materials");
     if (response?.code === 200) {
-      const localItems = JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]");
-      materials.value = [...response.data, ...localItems.filter((item) => item.localOnly)];
+      materials.value = response.data || [];
     }
   } catch (error) {
-    materials.value = JSON.parse(localStorage.getItem(`materials:${username.value || "guest"}`) || "[]");
+    materials.value = [];
   } finally {
     loading.materials = false;
   }
 }
 
 async function loadAccounts() {
+  loadLocalAccounts();
   try {
     const response = await apiRequest("/api/account/list");
     if (response?.code === 200) {
+      resetAccounts();
       response.data.forEach((item) => {
         if (!accounts[item.platform]) return;
         accounts[item.platform].loggedIn = item.login_status === "logged_in";
-        accounts[item.platform].accountName = item.account_name || accounts[item.platform].accountName;
+        accounts[item.platform].accountName = item.login_status === "logged_in" ? item.account_name || accounts[item.platform].accountName : "";
         accounts[item.platform].authType = item.auth_type === "mock" ? "Mock Token" : item.auth_type;
         accounts[item.platform].expireAt = item.token_expire_time || "-";
       });
+      saveLocalAccounts();
     }
   } catch (error) {
     // 保留本地账号状态。
@@ -1339,29 +1808,52 @@ async function saveAiSettings() {
       body: JSON.stringify({ provider: aiSettings.provider, settings: aiSettings })
     });
     notice.value = "AI 设置已保存到后端。";
+    closeAiConfig();
   } catch (error) {
     notice.value = "后端不可用，AI 设置已保存到本地。";
+    closeAiConfig();
   } finally {
     loading.settings = false;
   }
 }
 
-async function testModelConnection() {
+async function testModelConnection(provider = aiSettings.provider) {
   loading.settings = true;
   try {
-    const response = await apiRequest("/api/settings/llm/test", {
+    let response = await apiRequest("/api/settings/llm/test", {
       method: "POST",
-      body: JSON.stringify({ provider: aiSettings.provider, settings: aiSettings })
+      timeout: 30000,
+      body: JSON.stringify({ provider, settings: aiSettings })
     });
+    if (response?.code === 404) {
+      response = await apiRequest("/api/settings/llm-test", {
+        method: "POST",
+        timeout: 30000,
+        body: JSON.stringify({ provider, settings: aiSettings })
+      });
+    }
     notice.value = response?.message || "模型连接测试完成。";
+    if (response?.code === 200) {
+      addNotification("success", "模型连接成功", `${providerLabel(provider)} 测试通过。`);
+    } else if (response?.code === 0 || response?.code === 408) {
+      notice.value = response.message;
+      addNotification("failed", "模型连接失败", response.message);
+    } else {
+      addNotification("failed", "模型连接失败", response?.message || `${providerLabel(provider)} 测试失败。`);
+    }
   } catch (error) {
-    notice.value = "模型连接测试失败，请检查后端服务。";
+    notice.value = error?.message || "模型连接测试失败，请检查后端服务。";
+    addNotification("failed", "模型连接失败", notice.value);
   } finally {
     loading.settings = false;
   }
 }
 
 onMounted(() => {
+  applyTheme();
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+    if (themeMode.value === "system") applyTheme();
+  });
   if (!isAuthPage.value) {
     loadRecords();
     loadMaterials();
@@ -1389,7 +1881,23 @@ onMounted(() => {
   --topbar: 74px;
 }
 
+:root[data-theme="dark"] {
+  --accent: #ff8357;
+  --accent-soft: #39261f;
+  --blue: #77a7ff;
+  --red: #ff6f80;
+  --green: #45cf86;
+  --purple: #a18cff;
+  --ink: #eef3ff;
+  --muted: #9aa8c0;
+  --line: #2b3548;
+  --panel: #151d2c;
+  --page: #0d1420;
+  --shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+}
+
 * { box-sizing: border-box; }
+html { min-height: 100%; background: var(--page); }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--page); color: var(--ink); font-family: "Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -1405,7 +1913,7 @@ a { color: inherit; text-decoration: none; }
 .error-text { margin: 0; color: #c63f2d; font-weight: 800; }
 .auth-link { text-align: center; color: var(--blue); font-weight: 800; }
 
-.app-shell { min-height: 100vh; padding: var(--topbar) 0 0 var(--sidebar); }
+.app-shell { min-height: 100vh; padding: var(--topbar) 0 0 var(--sidebar); background: var(--page); }
 .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 10; width: var(--sidebar); display: flex; flex-direction: column; gap: 22px; padding: 22px; background: #fff; border-right: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 12px; min-height: 50px; }
 .brand-logo { width: 54px; height: 54px; object-fit: contain; }
@@ -1438,8 +1946,31 @@ a { color: inherit; text-decoration: none; }
 .step.active { color: var(--ink); }
 .step.active span, .step.done span { background: var(--accent); }
 .top-actions, .profile { display: flex; align-items: center; gap: 14px; }
-.icon-btn { width: 38px; height: 38px; border: 0; border-radius: 50%; background: transparent; color: #4f5972; font-size: 22px; }
-.bell svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.top-popover-wrap { position: relative; display: grid; place-items: center; width: 38px; height: 38px; }
+.icon-btn { position: relative; width: 38px; height: 38px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #4f5972; font-size: 0; line-height: 1; }
+.theme-trigger span { display: grid; place-items: center; width: 22px; height: 22px; font-size: 22px; line-height: 1; transform: translateY(-1px); }
+.icon-btn:hover { background: #f3f6fb; color: var(--accent); }
+.icon-btn i { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; display: grid; place-items: center; padding: 0 5px; border: 2px solid var(--panel); border-radius: 999px; background: var(--red); color: #fff; font-size: 10px; font-style: normal; font-weight: 900; }
+.bell svg { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.top-popover { position: absolute; top: 48px; right: 0; z-index: 40; width: 260px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 18px 46px rgba(25, 34, 61, 0.18); }
+.theme-popover { width: 190px; display: grid; gap: 6px; }
+.theme-popover button { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); text-align: left; }
+.theme-popover button:hover, .theme-popover button.active { background: var(--accent-soft); color: var(--accent); }
+.theme-popover span { width: 20px; text-align: center; }
+.notification-popover { width: 360px; max-height: 460px; overflow: auto; padding: 12px; }
+.notification-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 4px 12px; border-bottom: 1px solid var(--line); }
+.notification-head button { border: 0; background: transparent; color: var(--blue); font-size: 12px; font-weight: 900; }
+.notification-empty { padding: 30px 12px; color: var(--muted); text-align: center; font-weight: 800; }
+.notification-item { position: relative; width: 100%; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 3px 10px; align-items: start; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; color: var(--ink); text-align: left; }
+.notification-item.unread { border-color: #ffd0c0; background: linear-gradient(135deg, #fff7f3, #fbfcff); }
+.notification-item.unread::after { content: ""; position: absolute; top: 12px; right: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.notification-item b { grid-row: 1 / 4; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #edf8f2; color: var(--green); font-size: 15px; }
+.notification-item.failed b { background: #fff0f1; color: var(--red); }
+.notification-item span { font-weight: 900; }
+.notification-item.success span { color: #15824a; }
+.notification-item.failed span { color: #d33b4d; }
+.notification-item p { grid-column: 2 / 4; margin: 0; color: #596276; line-height: 1.5; }
+.notification-item small { grid-column: 2 / 4; color: #8a94aa; }
 .profile { padding-left: 18px; border-left: 1px solid var(--line); }
 .avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(135deg, #f8b28d, #5a87c8); color: #fff; font-weight: 900; }
 .profile strong, .profile span { display: block; }
@@ -1455,13 +1986,24 @@ a { color: inherit; text-decoration: none; }
 .panel-head.compact { margin-bottom: 16px; }
 .panel h2, .panel-head h2 { margin: 0; font-size: 20px; line-height: 1.2; }
 .panel-head p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
-.dashboard-hero { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.dashboard-hero { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 138px; padding: 26px 28px; background: linear-gradient(135deg, #fff7f2 0%, #eef4ff 100%); }
+.dashboard-hero::after { content: ""; position: absolute; right: 28%; top: -40px; width: 220px; height: 220px; border-radius: 50%; background: rgba(255, 107, 53, 0.1); }
+.dashboard-copy { position: relative; z-index: 1; display: grid; gap: 8px; }
+.dashboard-copy span { color: var(--accent); font-size: 12px; font-weight: 900; text-transform: uppercase; }
+.dashboard-copy h2, .dashboard-copy p { margin: 0; }
+.dashboard-copy h2 { font-size: 28px; }
+.dashboard-copy p { color: #526079; font-weight: 700; }
 .quick-actions, .card-actions, .settings-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .metric-grid, .material-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.metric-card { display: grid; gap: 8px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--shadow); }
+.metric-card { position: relative; display: grid; gap: 8px; min-height: 132px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--shadow); }
+.metric-card i { position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-style: normal; font-weight: 900; }
 .metric-card span { color: #68728b; font-weight: 800; }
 .metric-card strong { font-size: 24px; }
 .metric-card small { color: #8b94a8; }
+.dashboard-records { box-shadow: 0 18px 46px rgba(25, 34, 61, 0.08); }
+.dashboard-empty { display: grid; justify-items: center; gap: 8px; padding: 30px; border: 1px dashed #d8deea; border-radius: 8px; background: #fbfcff; text-align: center; }
+.dashboard-empty strong { font-size: 17px; }
+.dashboard-empty p { margin: 0; color: var(--muted); font-weight: 800; }
 
 .field { display: grid; gap: 10px; margin-top: 18px; }
 .field > span, .ai-panel label > span, .setting-field span { color: #17203a; font-size: 14px; font-weight: 800; }
@@ -1551,24 +2093,23 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .preview-tags span { padding: 4px 8px; border-radius: 99px; background: #eef4ff; color: #4970ca; font-size: 12px; font-weight: 800; }
 .empty-state { padding: 18px; border: 1px dashed #d8deea; border-radius: 8px; background: #fbfcff; color: #69738a; font-weight: 700; }
 .empty-state a { color: var(--blue); margin-left: 8px; cursor: pointer; }
-.record-list, .record-table { display: grid; gap: 10px; }
-.record-table { overflow-x: auto; }
-.record-head, .record-row.table {
-  display: grid;
-  grid-template-columns: 160px minmax(260px, 1fr) 130px 170px 96px;
-  gap: 16px;
-  align-items: center;
-  min-width: 880px;
-}
-.record-head {
-  min-height: 40px;
-  padding: 0 16px;
-  border-radius: 8px;
-  background: #f6f8fc;
-  color: #7b8498;
-  font-size: 13px;
-  font-weight: 900;
-}
+.records-empty { display: grid; justify-items: center; gap: 10px; padding: 40px 18px; border: 1px dashed #d8deea; border-radius: 8px; background: #fbfcff; color: #69738a; text-align: center; }
+.records-empty strong { color: var(--ink); font-size: 18px; }
+.records-empty p { margin: 0; font-weight: 700; }
+.records-empty .primary-outline { margin-top: 4px; }
+.record-list { display: grid; gap: 10px; }
+.record-table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.record-table { width: 100%; min-width: 920px; border-collapse: collapse; table-layout: fixed; }
+.record-table th,
+.record-table td { height: 56px; padding: 0 16px; border-bottom: 1px solid var(--line); vertical-align: middle; text-align: left; }
+.record-table th { height: 42px; background: #f6f8fc; color: #7b8498; font-size: 13px; font-weight: 900; }
+.record-table th:nth-child(1), .record-table td:nth-child(1) { width: 168px; }
+.record-table th:nth-child(3), .record-table td:nth-child(3) { width: 140px; }
+.record-table th:nth-child(4), .record-table td:nth-child(4) { width: 178px; }
+.record-table th:nth-child(5), .record-table td:nth-child(5) { width: 132px; text-align: right; }
+.record-table tbody tr:last-child td { border-bottom: 0; }
+.record-tr { cursor: pointer; }
+.record-tr:hover td { background: #f7f9fd; }
 .record-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 120px 170px 180px;
@@ -1580,29 +2121,51 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
   background: #fbfcff;
   cursor: pointer;
 }
-.record-row.table {
-  grid-template-columns: 160px minmax(260px, 1fr) 130px 170px 96px;
-  padding: 14px 16px;
-}
 .record-row:hover { background: #f7f9fd; }
 .record-row span, .record-row small { color: #6e788e; }
-.record-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.record-time { color: #5f6b82; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .record-title {
+  display: block;
   min-width: 0;
   overflow: hidden;
+  color: var(--ink);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.record-platform { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .record-status {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  white-space: nowrap;
 }
 .record-action {
-  display: flex;
+  display: inline-flex;
   justify-content: flex-end;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.table-action-btn { height: 30px; padding: 0 10px; border: 0; border-right: 1px solid var(--line); background: transparent; color: #4d5871; font-size: 12px; font-weight: 900; }
+.table-action-btn:last-child { border-right: 0; }
+.table-action-btn:hover { background: #f3f6fb; color: var(--blue); }
+.table-action-btn.danger { color: #c93648; }
+.table-action-btn.danger:hover { background: #fff5f6; color: #b52b3d; }
+.platform-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f2f6ff;
+  color: #3867d6;
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .status-tag {
   display: inline-flex;
@@ -1631,13 +2194,54 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .material-preview { height: 128px; display: grid; place-items: center; overflow: hidden; border-radius: 8px; background: #edf2f8; color: #50607a; font-weight: 900; }
 .material-preview img { width: 100%; height: 100%; object-fit: cover; }
 .material-card span, .material-card small { color: #6e788e; }
-.settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.settings-panel { display: grid; gap: 18px; }
+.settings-panel .panel-head { margin-bottom: 0; }
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.default-model-card { display: grid; gap: 8px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 8px; background: linear-gradient(135deg, #fff7f2, #eef4ff); }
+.default-model-card span { color: var(--muted); font-size: 13px; font-weight: 900; }
+.default-model-card strong { color: var(--ink); font-size: 24px; line-height: 1.2; }
+.default-model-card small { color: #5f6b82; font-weight: 800; }
+.ai-provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ai-provider-card { min-height: 210px; display: grid; grid-template-rows: auto 1fr auto; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.ai-provider-card.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ai-provider-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ai-provider-head h3, .ai-provider-head p { margin: 0; }
+.ai-provider-head h3 { font-size: 17px; }
+.ai-provider-head p { margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.ai-provider-head span { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 900; }
+.ai-provider-card dl { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px 10px; margin: 0; font-size: 13px; }
+.ai-provider-card dt { color: var(--muted); font-weight: 800; }
+.ai-provider-card dd { min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.settings-preferences { display: grid; grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.4fr); align-items: end; gap: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
+.settings-preferences h3, .settings-preferences p { margin: 0; }
+.settings-preferences h3 { font-size: 16px; }
+.settings-preferences p { margin-top: 6px; color: var(--muted); font-size: 13px; }
+.settings-preference-fields { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) auto; align-items: end; gap: 12px; }
+.settings-preference-fields .setting-field { min-width: 0; }
+.ai-config-dialog { position: relative; width: min(760px, 100%); display: grid; gap: 18px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
+.official-auth-dialog { position: relative; width: min(720px, 100%); display: grid; gap: 18px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
+.auth-dialog-body { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 18px; align-items: stretch; }
+.mock-qr { display: grid; place-items: center; align-content: center; gap: 10px; min-height: 240px; border: 1px dashed #cfd6e4; border-radius: 8px; background: #fbfcff; text-align: center; }
+.mock-qr span { width: 118px; height: 118px; border: 8px solid #fff; background: repeating-linear-gradient(45deg, #18213a 0 8px, #fff 8px 16px); box-shadow: 0 0 0 1px #dfe5ef; }
+.mock-qr strong { font-size: 16px; }
+.mock-qr small { color: var(--muted); font-weight: 800; }
+.auth-form { display: grid; align-content: center; gap: 14px; }
+.auth-form label { display: grid; gap: 8px; color: var(--ink); font-weight: 900; }
+.auth-form input { height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; border-radius: 8px; outline: 0; }
 
 .dialog-mask, .drawer-mask { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(18, 27, 47, 0.42); }
 .upgrade-dialog { position: relative; width: min(460px, 100%); display: grid; gap: 14px; padding: 26px; border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
 .upgrade-dialog h2, .upgrade-dialog p { margin: 0; }
 .upgrade-dialog p { color: var(--muted); }
 .dialog-close { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #f2f4f8; color: #566176; font-size: 22px; }
+.confirm-dialog { position: relative; width: min(440px, 100%); display: grid; justify-items: start; gap: 12px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
+.confirm-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: #fff0f1; color: #c93648; font-size: 22px; font-weight: 900; }
+.confirm-dialog h2 { margin: 0; color: var(--ink); font-size: 20px; }
+.confirm-dialog p { margin: 0; color: #596276; line-height: 1.7; }
+.confirm-dialog strong { max-width: 100%; padding: 9px 12px; overflow: hidden; border-radius: 8px; background: #f7f9fc; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.confirm-actions { width: 100%; display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.danger-confirm-btn { height: 42px; padding: 0 16px; border: 0; border-radius: 8px; background: #c93648; color: #fff; font-weight: 900; box-shadow: 0 12px 24px rgba(201, 54, 72, 0.22); }
+.danger-confirm-btn:hover { background: #b52b3d; }
 .sample-dialog { position: relative; width: min(760px, 100%); display: grid; gap: 18px; padding: 28px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
 .sample-dialog-head h2, .sample-dialog-head p { margin: 0; }
 .sample-dialog-head p { margin-top: 8px; color: var(--muted); }
@@ -1652,12 +2256,116 @@ select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #dfe5ef; 
 .pay-grid b { width: 74px; height: 74px; display: grid; place-items: center; background: repeating-linear-gradient(45deg, #111 0 6px, #fff 6px 12px); color: var(--accent); border: 8px solid #fff; box-shadow: 0 0 0 1px #dfe5ef; }
 .record-drawer { position: relative; width: min(980px, 100%); max-height: 88vh; overflow: auto; display: grid; gap: 16px; padding: 28px; border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18); }
 .record-drawer h2 { margin: 0; }
-.detail-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; color: #65708a; font-weight: 800; font-size: 13px; }
+.detail-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; color: #65708a; font-weight: 800; font-size: 13px; }
+.detail-meta span { min-width: 0; display: grid; gap: 4px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; color: var(--ink); overflow-wrap: anywhere; }
+.detail-meta b { color: #7b8498; font-size: 12px; }
 .source-text { margin: 0; padding: 14px; border-radius: 8px; background: #f7f9fc; color: #4e5a74; line-height: 1.7; white-space: pre-wrap; }
+.detail-section { display: grid; gap: 10px; }
+.detail-section h3 { margin: 0; color: var(--ink); font-size: 15px; }
+.detail-post-title { min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; color: var(--ink); overflow-wrap: anywhere; }
+.detail-tags small { color: #7b8498; font-weight: 800; }
+.detail-materials { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.detail-materials a { min-width: 0; display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; color: var(--ink); text-decoration: none; }
+.detail-materials span { color: var(--accent); font-size: 12px; font-weight: 900; }
+.detail-materials strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-empty { padding: 12px 14px; border: 1px dashed #d8deea; border-radius: 8px; background: #fbfcff; color: #7b8498; font-weight: 800; }
 .detail-platforms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .detail-card { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcff; }
 .detail-card h3, .detail-card p { margin: 0; }
 .detail-card p { color: #4e5a74; line-height: 1.7; white-space: pre-wrap; }
+
+:root[data-theme="dark"] .auth-card,
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] .app-shell,
+:root[data-theme="dark"] .workspace,
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .metric-card,
+:root[data-theme="dark"] .platform-card,
+:root[data-theme="dark"] .preview-card,
+:root[data-theme="dark"] .record-table-wrap,
+:root[data-theme="dark"] .record-action,
+:root[data-theme="dark"] .table-action-btn,
+:root[data-theme="dark"] .account-card,
+:root[data-theme="dark"] .material-card,
+:root[data-theme="dark"] .ai-provider-card,
+:root[data-theme="dark"] .ai-config-dialog,
+:root[data-theme="dark"] .official-auth-dialog,
+:root[data-theme="dark"] .settings-preferences,
+:root[data-theme="dark"] .dashboard-hero,
+:root[data-theme="dark"] .dashboard-empty,
+:root[data-theme="dark"] .mock-qr,
+:root[data-theme="dark"] .more-platforms button,
+:root[data-theme="dark"] .filter-tabs button,
+:root[data-theme="dark"] .confirm-dialog strong,
+:root[data-theme="dark"] .pay-grid div,
+:root[data-theme="dark"] .detail-card,
+:root[data-theme="dark"] .upgrade-dialog,
+:root[data-theme="dark"] .sample-dialog,
+:root[data-theme="dark"] .confirm-dialog,
+:root[data-theme="dark"] .record-drawer,
+:root[data-theme="dark"] .top-popover { background: var(--panel); }
+:root[data-theme="dark"] { color-scheme: dark; }
+html[data-theme="dark"],
+:root[data-theme="dark"] body { background: var(--page); }
+:root[data-theme="dark"] .topbar { background: rgba(21, 29, 44, 0.94); }
+:root[data-theme="dark"] .auth-page { background: var(--page); }
+:root[data-theme="dark"] .default-model-card { background: #101827; }
+:root[data-theme="dark"] .dashboard-copy p { color: var(--muted); }
+:root[data-theme="dark"] .upgrade-card { background: #1d2435; color: var(--purple); }
+:root[data-theme="dark"] .upgrade-card.pro { background: #14291f; color: var(--green); }
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] .input-wrap,
+:root[data-theme="dark"] .tag-editor,
+:root[data-theme="dark"] .rich-editor,
+:root[data-theme="dark"] .segmented,
+:root[data-theme="dark"] .sample-card,
+:root[data-theme="dark"] .records-empty,
+:root[data-theme="dark"] .empty-state,
+:root[data-theme="dark"] .record-table th,
+:root[data-theme="dark"] .record-row,
+:root[data-theme="dark"] .detail-meta span,
+:root[data-theme="dark"] .source-text,
+:root[data-theme="dark"] .detail-post-title,
+:root[data-theme="dark"] .detail-materials a,
+:root[data-theme="dark"] .detail-empty,
+:root[data-theme="dark"] .notification-item,
+:root[data-theme="dark"] .material-preview,
+:root[data-theme="dark"] .tag-editor span,
+:root[data-theme="dark"] .thumb,
+:root[data-theme="dark"] .add-thumb,
+:root[data-theme="dark"] .cover-preview { background: #101827; color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] .primary-outline,
+:root[data-theme="dark"] .ghost-btn { background: #f8fafc; color: #18213a; border-color: #d9e0ec; }
+:root[data-theme="dark"] .topbar .ghost-btn { background: #f8fafc; color: #18213a; }
+:root[data-theme="dark"] .notification-item.unread { background: #241c1d; border-color: #61313b; }
+:root[data-theme="dark"] .platform-card.selected.wechat,
+:root[data-theme="dark"] .platform-card.selected.zhihu,
+:root[data-theme="dark"] .platform-card.selected.bilibili,
+:root[data-theme="dark"] .platform-card.selected.xiaohongshu,
+:root[data-theme="dark"] .theme-popover button:hover,
+:root[data-theme="dark"] .theme-popover button.active { background: var(--accent-soft); }
+:root[data-theme="dark"] .icon-btn { color: #c5cee0; }
+:root[data-theme="dark"] .icon-btn:hover { background: #202a3c; }
+:root[data-theme="dark"] .record-tr:hover td { background: #172132; }
+:root[data-theme="dark"] .record-table td { background: var(--panel); }
+:root[data-theme="dark"] .platform-tag { background: #172643; color: #8fb5ff; }
+:root[data-theme="dark"] .status-tag.success { background: #133124; color: #70e0a2; }
+:root[data-theme="dark"] .status-tag.failed { background: #3a1820; color: #ff8796; }
+:root[data-theme="dark"] .status-tag.mock { background: #172643; color: #8fb5ff; }
+:root[data-theme="dark"] .publish-overview-item { border-bottom-color: var(--line); color: var(--muted); }
+:root[data-theme="dark"] .profile div span { background: #352b17; color: #ffd36a; }
+:root[data-theme="dark"] .preview-card input,
+:root[data-theme="dark"] .preview-card textarea { background: #101827; color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] .panel-head p,
+:root[data-theme="dark"] .field > span,
+:root[data-theme="dark"] .ai-panel label > span,
+:root[data-theme="dark"] .setting-field span,
+:root[data-theme="dark"] .notification-item p,
+:root[data-theme="dark"] .detail-card p { color: var(--muted); }
 
 @media (max-width: 1320px) {
   .workspace { grid-template-columns: 1fr; }

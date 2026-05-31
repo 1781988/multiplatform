@@ -422,6 +422,7 @@ def get_record_detail(record_id: int) -> dict | None:
     return {
         "id": row["id"],
         "task_id": row["task_id"],
+        "platform": row["platform"],
         "task_title": row["task_title"] or row["final_title"],
         "source_content": row["source_content"],
         "publish_time": row["publish_time"],
@@ -462,7 +463,7 @@ def list_materials(limit: int = 200) -> list:
     rows = cursor.fetchall()
     connection.close()
 
-    return [
+    materials = [
         {
             "id": row["id"],
             "task_id": row["task_id"],
@@ -475,6 +476,15 @@ def list_materials(limit: int = 200) -> list:
             "usage_count": 1 if row["task_id"] else 0,
         }
         for row in rows
+    ]
+    return [
+        item
+        for item in materials
+        if not (
+            str(item["name"]).lower().startswith(("sample", "demo", "示例", "样例"))
+            or "unsplash.com" in str(item["url"]).lower()
+            or "placeholder" in str(item["url"]).lower()
+        )
     ]
 
 
@@ -585,14 +595,44 @@ def upsert_platform_account(
     }
 
 
+def logout_platform_account(platform: str) -> dict:
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        INSERT INTO platform_account (
+            platform, account_name, auth_type, access_token, login_status,
+            token_expire_time, created_at
+        )
+        VALUES (?, '', 'none', '', 'logged_out', '-', datetime('now'))
+        """,
+        (platform,),
+    )
+    connection.commit()
+    connection.close()
+    return {
+        "platform": platform,
+        "account_name": "",
+        "auth_type": "none",
+        "access_token": "",
+        "login_status": "logged_out",
+        "token_expire_time": "-",
+    }
+
+
 def list_platform_accounts() -> list:
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute(
         """
-        SELECT platform, account_name, auth_type, access_token, login_status, token_expire_time
-        FROM platform_account
-        ORDER BY id DESC
+        SELECT p.platform, p.account_name, p.auth_type, p.access_token, p.login_status, p.token_expire_time
+        FROM platform_account p
+        INNER JOIN (
+            SELECT platform, MAX(id) AS latest_id
+            FROM platform_account
+            GROUP BY platform
+        ) latest ON latest.latest_id = p.id
+        ORDER BY p.id DESC
         """
     )
     rows = cursor.fetchall()

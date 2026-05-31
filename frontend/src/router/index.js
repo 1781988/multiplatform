@@ -28,7 +28,7 @@ router.beforeEach((to) => {
 });
 
 router.afterEach((to) => {
-  document.title = `${to.meta.title || "工作台"} - 聚发舟 MultiPost AI`;
+  document.title = `${to.meta.title || "工作台"} - 聚舟 MultiPost AI`;
 });
 
 export default router;
