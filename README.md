@@ -4,7 +4,9 @@
 
 ## 演示视频
 
-- 演示视频链接：https://www.alipan.com/s/ANzp6ZTXQBE
+- 演示视频百度云盘链接：通过网盘分享的文件：demo.mp4
+链接: https://pan.baidu.com/s/1gzMhc3myhKmQj3ccSnC4-A?pwd=4a34 提取码: 4a34
+- 演示视频阿里云盘链接：https://www.alipan.com/s/ANzp6ZTXQBE
 
 
 ## 项目亮点
